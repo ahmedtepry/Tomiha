@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'core.dart';
+import 'splash.dart';
 
 class CustomerApp extends StatelessWidget {
   const CustomerApp({super.key});
@@ -10,9 +11,11 @@ class CustomerApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return nasyaMaterialApp(
-      AuthGate(
-        signedIn: () => const HomePage(),
-        signedOut: const AuthPage(title: 'قهوتك تستناك قبل ما توصل'),
+      SplashGate(
+        next: AuthGate(
+          signedIn: () => const HomePage(),
+          signedOut: const AuthPage(title: 'قهوتك تستناك قبل ما توصل'),
+        ),
       ),
     );
   }
