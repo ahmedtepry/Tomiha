@@ -1,9 +1,10 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' show AuthState;
 
 import 'core.dart';
-import 'splash.dart';
+import 'welcome.dart';
 import 'update.dart';
 
 class CustomerApp extends StatelessWidget {
@@ -12,12 +13,7 @@ class CustomerApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return nasyaMaterialApp(
-      SplashGate(
-        next: AuthGate(
-          signedIn: () => const UpdateWatcher(child: HomePage()),
-          signedOut: const AuthPage(title: 'قهوتك تستناك قبل ما توصل'),
-        ),
-      ),
+      const SplashGate(next: UpdateWatcher(child: HomePage())),
     );
   }
 }
@@ -74,18 +70,35 @@ class _HomePageState extends State<HomePage> {
         title: const Text('BONNAYA',
             style: TextStyle(fontWeight: FontWeight.w800, fontSize: 26)),
         actions: [
-          IconButton(
-            tooltip: 'طلباتي',
-            icon: const Icon(Icons.receipt_long),
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const OrdersPage()),
-            ),
-          ),
-          IconButton(
-            tooltip: 'خروج',
-            icon: const Icon(Icons.logout),
-            onPressed: () => sb.auth.signOut(),
+          StreamBuilder<AuthState>(
+            stream: sb.auth.onAuthStateChange,
+            builder: (context, _) {
+              if (sb.auth.currentSession == null) {
+                return TextButton.icon(
+                  icon: const Icon(Icons.login),
+                  label: const Text('دخول'),
+                  onPressed: () => ensureSignedIn(context),
+                );
+              }
+              return Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    tooltip: 'طلباتي',
+                    icon: const Icon(Icons.receipt_long),
+                    onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const OrdersPage()),
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'خروج',
+                    icon: const Icon(Icons.logout),
+                    onPressed: () => sb.auth.signOut(),
+                  ),
+                ],
+              );
+            },
           ),
         ],
       ),
@@ -357,6 +370,10 @@ class _CartPageState extends State<CartPage> {
 
   Future<void> _place() async {
     if (busy) return;
+    if (sb.auth.currentSession == null) {
+      final ok = await ensureSignedIn(context);
+      if (!ok || !mounted) return;
+    }
     if (!net.online) {
       setState(() => waiting = true);
       return;

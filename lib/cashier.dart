@@ -8,6 +8,7 @@ import 'package:printing/printing.dart';
 
 import 'core.dart';
 import 'update.dart';
+import 'appearance.dart';
 
 const _orderSelect =
     '*, profiles(full_name), order_items(*, drinks(name), order_item_addons(*, addons(name)))';
@@ -214,6 +215,14 @@ class CashierHome extends StatelessWidget {
         title: Text(
             'BONNAYA • كاشير  (وردية من ${fmtTime(shift['opened_at'] as String)})'),
         actions: [
+          IconButton(
+            tooltip: 'شاشة الترحيب (للمالك)',
+            icon: const Icon(Icons.palette_outlined),
+            onPressed: () => showDialog<void>(
+              context: context,
+              builder: (_) => const WelcomeSettingsDialog(),
+            ),
+          ),
           TextButton.icon(
             icon: const Icon(Icons.summarize_outlined),
             label: const Text('تقرير / قفل الوردية'),

@@ -541,6 +541,57 @@ class AuthGate extends StatelessWidget {
   }
 }
 
+/// Guests can browse the menu; this asks them to sign in only when needed.
+Future<bool> ensureSignedIn(BuildContext context) async {
+  if (sb.auth.currentSession != null) return true;
+  final ok = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => const _LoginRoute()));
+  return ok == true && sb.auth.currentSession != null;
+}
+
+class _LoginRoute extends StatefulWidget {
+  const _LoginRoute();
+  @override
+  State<_LoginRoute> createState() => _LoginRouteState();
+}
+
+class _LoginRouteState extends State<_LoginRoute> {
+  StreamSubscription<AuthState>? _sub;
+
+  @override
+  void initState() {
+    super.initState();
+    _sub = sb.auth.onAuthStateChange.listen((s) {
+      if (s.session != null && mounted) Navigator.of(context).pop(true);
+    });
+  }
+
+  @override
+  void dispose() {
+    _sub?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        const AuthPage(title: 'سجّل دخولك عشان تكمّل الطلب'),
+        SafeArea(
+          child: Align(
+            alignment: AlignmentDirectional.topStart,
+            child: IconButton(
+              tooltip: 'رجوع',
+              icon: const Icon(Icons.arrow_back),
+              onPressed: () => Navigator.of(context).pop(false),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class AuthPage extends StatefulWidget {
   final String title;
   final bool allowSignUp;
