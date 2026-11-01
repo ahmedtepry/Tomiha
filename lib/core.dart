@@ -12,16 +12,20 @@ const supabaseUrl = 'https://bfwydbseqkujqvnprtar.supabase.co';
 const supabaseAnonKey =
     'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJmd3lkYnNlcWt1anF2bnBydGFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTM1MTQwOTUsImV4cCI6MjEwOTA5MDA5NX0.1zNyQ8nqvy7iZWfiFcrBIN_lHG7ysNaXvQbJfb20Hz8';
 
-const cInk = Color(0xFF2A1A12);
-const cCream = Color(0xFFF6EBDD);
-const cCream2 = Color(0xFFEADBC6);
-const cHair = Color(0xFFD9C6AB);
-const cMuted = Color(0xFF6B5444);
-const cBrand = Color(0xFFA24E1B);
-const cCopper = Color(0xFFC8662B);
-const cGreen = Color(0xFF3F5D4A);
+// Dark roast palette ("سهرة قهوة"): cInk is the light text colour,
+// cCream the dark background. Names are kept so every screen follows.
+const cInk = Color(0xFFF5E9D8);
+const cCream = Color(0xFF1A110C);
+const cCream2 = Color(0xFF2A1C14);
+const cHair = Color(0xFF3A281C);
+const cMuted = Color(0xFFB79F88);
+const cBrand = Color(0xFFD9894A);
+const cOnBrand = Color(0xFF1A110C);
+const cCopper = Color(0xFFEBB27A);
+const cGreen = Color(0xFF3E7C57);
 const cGold = Color(0xFFE3B04B);
-const cDanger = Color(0xFFB3342A);
+const cDanger = Color(0xFFC8493A);
+const cCoffee = Color(0xFF6A3D22);
 
 SupabaseClient get sb => Supabase.instance.client;
 
@@ -97,12 +101,12 @@ Widget _netBanner(String text, Color color, IconData icon) {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         child: Row(
           children: [
-            Icon(icon, color: cCream, size: 18),
+            Icon(icon, color: cInk, size: 18),
             const SizedBox(width: 8),
             Expanded(
               child: Text(text,
                   style: const TextStyle(
-                      color: cCream, fontWeight: FontWeight.w600, fontSize: 14)),
+                      color: cInk, fontWeight: FontWeight.w600, fontSize: 14)),
             ),
           ],
         ),
@@ -145,11 +149,12 @@ String newRequestId() {
 }
 
 ThemeData nasyaTheme() {
-  final scheme = ColorScheme.fromSeed(seedColor: cBrand).copyWith(
+  final scheme = ColorScheme.fromSeed(seedColor: cBrand, brightness: Brightness.dark).copyWith(
+    brightness: Brightness.dark,
     primary: cBrand,
-    onPrimary: cCream,
+    onPrimary: cOnBrand,
     secondary: cGreen,
-    onSecondary: cCream,
+    onSecondary: cInk,
     surface: cCream,
     onSurface: cInk,
     error: cDanger,

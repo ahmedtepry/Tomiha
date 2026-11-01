@@ -130,7 +130,7 @@ class _CupPainter extends CustomPainter {
     canvas.clipPath(cup);
     final level = bottom - (bottom - top - 8) * fill;
     canvas.drawRect(Rect.fromLTRB(0, level, s.width, bottom + 12),
-        Paint()..color = cInk);
+        Paint()..color = cCoffee);
     // little wave on the surface
     if (fill > 0 && fill < 1) {
       final wave = Path()..moveTo(cx - topHalf, level);
@@ -165,7 +165,7 @@ class _CupPainter extends CustomPainter {
           RRect.fromRectAndRadius(
               Rect.fromLTRB(cx - w / 2, startY, cx + w / 2, endY),
               Radius.circular(w)),
-          Paint()..color = cInk);
+          Paint()..color = cCoffee);
       // spout
       canvas.drawRRect(
           RRect.fromRectAndRadius(
@@ -192,7 +192,7 @@ class _CupPainter extends CustomPainter {
               ..style = PaintingStyle.stroke
               ..strokeCap = StrokeCap.round
               ..strokeWidth = 5
-              ..color = cMuted.withOpacity(a.clamp(0.0, 1.0)));
+              ..color = Colors.white.withOpacity(a.clamp(0.0, 1.0)));
       }
     }
   }

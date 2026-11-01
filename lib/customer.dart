@@ -604,18 +604,18 @@ class _TrackPageState extends State<TrackPage> {
         Container(
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            color: cInk,
+            color: cBrand,
             borderRadius: BorderRadius.circular(22),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text('طلب رقم ${o['order_no']}',
-                  style: const TextStyle(color: cHair)),
+                  style: const TextStyle(color: cOnBrand)),
               const SizedBox(height: 4),
               Text(statusLabel[status] ?? status,
                   style: const TextStyle(
-                      color: cCream, fontSize: 30, fontWeight: FontWeight.w800)),
+                      color: cOnBrand, fontSize: 30, fontWeight: FontWeight.w800)),
               const SizedBox(height: 4),
               Text(
                 status == 'ready'
@@ -694,7 +694,7 @@ class _TrackPageState extends State<TrackPage> {
                   color: done ? cGreen : (current ? cBrand : cHair), width: 3),
             ),
             child: done
-                ? const Icon(Icons.check, size: 18, color: cCream)
+                ? const Icon(Icons.check, size: 18, color: cInk)
                 : current
                     ? const Center(
                         child: CircleAvatar(radius: 5, backgroundColor: cBrand))

@@ -412,7 +412,7 @@ class _OnlineOrdersPanelState extends State<OnlineOrdersPanel> {
         : st == 'preparing'
             ? cGreen
             : cCream;
-    final chipText = st == 'preparing' ? cCream : cInk;
+    final chipText = st == 'preparing' ? cInk : cOnBrand;
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
