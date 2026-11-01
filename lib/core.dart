@@ -187,7 +187,7 @@ ThemeData nasyaTheme() {
 
 MaterialApp nasyaMaterialApp(Widget home) {
   return MaterialApp(
-    title: 'الناصية',
+    title: 'BONNAYA',
     debugShowCheckedModeBanner: false,
     theme: nasyaTheme(),
     locale: const Locale('ar'),
@@ -272,7 +272,7 @@ const _errorRules = <List<String>>[
   ['already been registered', 'الإيميل ده مسجّل قبل كده. جرّب تدخل.'],
   ['password should be', 'كلمة السر لازم تكون 6 حروف على الأقل.'],
   ['rate limit', 'جرّبت كتير في وقت قصير. استنى شوية وحاول تاني.'],
-  ['email not confirmed', 'الإيميل لسه متأكدش. كلّم الناصية.'],
+  ['email not confirmed', 'الإيميل لسه متأكدش. كلّم بنايه.'],
   ['unable to validate email', 'اكتب إيميل صحيح.'],
   ['invalid email', 'اكتب إيميل صحيح.'],
   ['jwt', 'انتهت جلستك. سجّل دخول تاني.'],
@@ -619,7 +619,7 @@ class _AuthPageState extends State<AuthPage> {
             padding: const EdgeInsets.all(24),
             children: [
               const Center(
-                child: Text('الناصية',
+                child: Text('BONNAYA',
                     style: TextStyle(
                         fontSize: 44, fontWeight: FontWeight.w800, color: cInk)),
               ),

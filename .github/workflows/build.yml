@@ -25,21 +25,21 @@ jobs:
         run: |
           cp -r lib /tmp/lib_backup
           cp pubspec.yaml /tmp/pubspec_backup.yaml
-          flutter create --platforms=android --project-name nasya --org com.nasya .
+          flutter create --platforms=android --project-name bonnaya --org com.bonnaya .
           rm -rf lib && cp -r /tmp/lib_backup lib
           cp /tmp/pubspec_backup.yaml pubspec.yaml
           rm -rf test
       - name: Allow internet and set app name
         run: |
           sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/>\n    <application#' android/app/src/main/AndroidManifest.xml
-          sed -i 's#android:label="[^"]*"#android:label="الناصية"#' android/app/src/main/AndroidManifest.xml
+          sed -i 's#android:label="[^"]*"#android:label="BONNAYA"#' android/app/src/main/AndroidManifest.xml
       - run: flutter pub get
       - run: flutter build apk --release -t lib/main.dart
-      - run: cp build/app/outputs/flutter-apk/app-release.apk nasya.apk
+      - run: cp build/app/outputs/flutter-apk/app-release.apk bonnaya.apk
       - uses: actions/upload-artifact@v4
         with:
-          name: nasya-apk
-          path: nasya.apk
+          name: bonnaya-apk
+          path: bonnaya.apk
 
   windows:
     runs-on: windows-latest
@@ -56,21 +56,21 @@ jobs:
         run: |
           cp -r lib /tmp/lib_backup
           cp pubspec.yaml /tmp/pubspec_backup.yaml
-          flutter create --platforms=windows --project-name nasya --org com.nasya .
+          flutter create --platforms=windows --project-name bonnaya --org com.bonnaya .
           rm -rf lib && cp -r /tmp/lib_backup lib
           cp /tmp/pubspec_backup.yaml pubspec.yaml
           rm -rf test
       - name: Set window title
-        run: sed -i 's/L"nasya"/L"Nasya Cashier"/' windows/runner/main.cpp
+        run: sed -i 's/L"bonnaya"/L"BONNAYA Cashier"/' windows/runner/main.cpp
       - run: flutter pub get
       - run: flutter build windows --release -t lib/main_cashier.dart
       - name: Zip the app
         shell: pwsh
-        run: Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath nasya-cashier-windows.zip
+        run: Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath bonnaya-cashier-windows.zip
       - uses: actions/upload-artifact@v4
         with:
-          name: nasya-cashier-windows
-          path: nasya-cashier-windows.zip
+          name: bonnaya-cashier-windows
+          path: bonnaya-cashier-windows.zip
 
   release:
     needs: [apk, windows]

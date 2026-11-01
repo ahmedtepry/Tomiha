@@ -67,7 +67,7 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('الناصية',
+        title: const Text('BONNAYA',
             style: TextStyle(fontWeight: FontWeight.w800, fontSize: 26)),
         actions: [
           IconButton(
@@ -617,7 +617,7 @@ class _TrackPageState extends State<TrackPage> {
                 status == 'ready'
                     ? 'قهوتك جاهزة، العربية مستنياك.'
                     : status == 'cancelled'
-                        ? 'الطلب اتلغى. لو فيه مشكلة كلّم الناصية.'
+                        ? 'الطلب اتلغى. لو فيه مشكلة كلّم بنايه.'
                         : status == 'delivered'
                             ? 'بالهنا والشفا.'
                             : eta != null

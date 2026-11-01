@@ -105,7 +105,7 @@ class _CashierGateState extends State<CashierGate> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Text('الحساب ده مش مسجّل كموظف في الناصية.'),
+                  const Text('الحساب ده مش مسجّل كموظف في بنايه.'),
                   const SizedBox(height: 12),
                   FilledButton(
                     onPressed: () => sb.auth.signOut(),
@@ -158,7 +158,7 @@ class _OpenShiftPageState extends State<OpenShiftPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('الناصية • كاشير'),
+        title: const Text('BONNAYA • كاشير'),
         actions: [
           IconButton(
             tooltip: 'خروج',
@@ -211,7 +211,7 @@ class CashierHome extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: Text(
-            'الناصية • كاشير  (وردية من ${fmtTime(shift['opened_at'] as String)})'),
+            'BONNAYA • كاشير  (وردية من ${fmtTime(shift['opened_at'] as String)})'),
         actions: [
           TextButton.icon(
             icon: const Icon(Icons.summarize_outlined),
@@ -1032,7 +1032,7 @@ Future<void> printReceipt(Map<String, dynamic> order) async {
       build: (ctx) => pw.Column(
         crossAxisAlignment: pw.CrossAxisAlignment.stretch,
         children: [
-          pw.Center(child: t('الناصية', b: true, size: 20)),
+          pw.Center(child: t('BONNAYA', b: true, size: 20)),
           pw.SizedBox(height: 4),
           t('طلب رقم ${order['order_no']}  •  ${fmtTime(order['created_at'] as String)}'),
           pw.Divider(),
@@ -1064,13 +1064,13 @@ Future<void> printReceipt(Map<String, dynamic> order) async {
           pw.SizedBox(height: 4),
           t(isCash ? 'الدفع: كاش' : 'الدفع: محفظة إلكترونية'),
           pw.SizedBox(height: 8),
-          pw.Center(child: t('شكرًا لزيارتك الناصية', size: 9)),
+          pw.Center(child: t('شكرًا لزيارتك بنايه', size: 9)),
         ],
       ),
     ),
   );
   await Printing.layoutPdf(
-    name: 'nasya-${order['order_no']}',
+    name: 'bonnaya-${order['order_no']}',
     onLayout: (format) async => doc.save(),
   );
 }

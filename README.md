@@ -1,4 +1,4 @@
-# الناصية (Nasya)
+# BONNAYA (بنايه)
 
 عربية قهوة متنقلة: العميل يطلب من التطبيق وهو في الطريق، ويستلم قهوته جاهزة.
 
@@ -6,8 +6,8 @@
 
 | الجزء | الملف | الناتج |
 | --- | --- | --- |
-| تطبيق العميل (Android) | `lib/main.dart` + `lib/customer.dart` | `nasya.apk` |
-| برنامج الكاشير (Windows) | `lib/main_cashier.dart` + `lib/cashier.dart` | `nasya-cashier-windows.zip` (فيه `nasya.exe`) |
+| تطبيق العميل (Android) | `lib/main.dart` + `lib/customer.dart` | `bonnaya.apk` |
+| برنامج الكاشير (Windows) | `lib/main_cashier.dart` + `lib/cashier.dart` | `bonnaya-cashier-windows.zip` (فيه `bonnaya.exe`) |
 | قاعدة البيانات (Supabase، مشروع `nasya`) | `supabase/migrations/` | جداول وRLS ودوال الطلبات والورديات |
 
 كود مشترك في `lib/core.dart` (الألوان، الموديلات، الاتصال بـ Supabase).
@@ -17,13 +17,13 @@
 البناء بيحصل أوتوماتيك على GitHub Actions أول ما تعمل push على `main` (أو من تبويب Actions ثم Run workflow).
 الملفات بتطلع في تبويب **Releases** باسم `Build N`:
 
-- `nasya.apk`: ثبّته على أندرويد (فعّل التثبيت من مصدر غير معروف).
-- `nasya-cashier-windows.zip`: فكّ الضغط وشغّل `nasya.exe` من جوه الفولدر (متنقلوش لوحده، محتاج الملفات اللي جنبه).
+- `bonnaya.apk`: ثبّته على أندرويد (فعّل التثبيت من مصدر غير معروف).
+- `bonnaya-cashier-windows.zip`: فكّ الضغط وشغّل `bonnaya.exe` من جوه الفولدر (متنقلوش لوحده، محتاج الملفات اللي جنبه).
 
 بناء محلي (محتاج Flutter):
 
 ```
-flutter create --platforms=android,windows --project-name nasya .
+flutter create --platforms=android,windows --project-name bonnaya .
 flutter build apk --release -t lib/main.dart
 flutter build windows --release -t lib/main_cashier.dart
 ```
