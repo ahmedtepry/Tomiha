@@ -22,8 +22,12 @@
 .env*
 .env.*
 .flutter-plugins
+.flutter-plugins*
 .flutter-plugins-dependencies
 .packages
+/android/
+/ios/
+/windows/
 build/
 doc/api/
 node_modules/
