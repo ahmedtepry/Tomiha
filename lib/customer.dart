@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import 'core.dart';
 import 'splash.dart';
+import 'update.dart';
 
 class CustomerApp extends StatelessWidget {
   const CustomerApp({super.key});
@@ -13,7 +14,7 @@ class CustomerApp extends StatelessWidget {
     return nasyaMaterialApp(
       SplashGate(
         next: AuthGate(
-          signedIn: () => const HomePage(),
+          signedIn: () => const UpdateWatcher(child: HomePage()),
           signedOut: const AuthPage(title: 'قهوتك تستناك قبل ما توصل'),
         ),
       ),

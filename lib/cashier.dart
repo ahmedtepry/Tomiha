@@ -7,6 +7,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
 import 'core.dart';
+import 'update.dart';
 
 const _orderSelect =
     '*, profiles(full_name), order_items(*, drinks(name), order_item_addons(*, addons(name)))';
@@ -18,7 +19,7 @@ class CashierApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return nasyaMaterialApp(
       AuthGate(
-        signedIn: () => const CashierGate(),
+        signedIn: () => const UpdateWatcher(child: CashierGate()),
         signedOut: const AuthPage(title: 'دخول الكاشير', allowSignUp: false),
       ),
     );

@@ -33,8 +33,22 @@ jobs:
         run: |
           sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/>\n    <application#' android/app/src/main/AndroidManifest.xml
           sed -i 's#android:label="[^"]*"#android:label="BONNAYA"#' android/app/src/main/AndroidManifest.xml
+      - name: Sign with the fixed BONNAYA key (so updates install over old versions)
+        run: |
+          cp signing/bonnaya.jks android/app/bonnaya.jks
+          printf 'storePassword=bonnaya-pass\nkeyPassword=bonnaya-pass\nkeyAlias=bonnaya\nstoreFile=bonnaya.jks\n' > android/key.properties
+          python3 - <<'PY'
+          import re
+          p = 'android/app/build.gradle.kts'
+          s = open(p).read()
+          s = 'import java.util.Properties\nimport java.io.FileInputStream\n' + s
+          s = s.replace('android {', 'val keyProps = Properties().apply { load(FileInputStream(rootProject.file("key.properties"))) }\nandroid {', 1)
+          s = s.replace('buildTypes {', 'signingConfigs { create("bonnaya") { keyAlias = keyProps["keyAlias"] as String; keyPassword = keyProps["keyPassword"] as String; storeFile = file(keyProps["storeFile"] as String); storePassword = keyProps["storePassword"] as String } }\n    buildTypes {', 1)
+          s = s.replace('signingConfigs.getByName("debug")', 'signingConfigs.getByName("bonnaya")')
+          open(p, 'w').write(s)
+          PY
       - run: flutter pub get
-      - run: flutter build apk --release -t lib/main.dart
+      - run: flutter build apk --release -t lib/main.dart --build-number=${{ github.run_number }}
       - run: cp build/app/outputs/flutter-apk/app-release.apk bonnaya.apk
       - uses: actions/upload-artifact@v4
         with:
@@ -63,7 +77,7 @@ jobs:
       - name: Set window title
         run: sed -i 's/L"bonnaya"/L"BONNAYA Cashier"/' windows/runner/main.cpp
       - run: flutter pub get
-      - run: flutter build windows --release -t lib/main_cashier.dart
+      - run: flutter build windows --release -t lib/main_cashier.dart --build-number=${{ github.run_number }}
       - name: Zip the app
         shell: pwsh
         run: Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath bonnaya-cashier-windows.zip
