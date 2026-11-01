@@ -1,3 +1,7 @@
+import 'dart:async';
+import 'dart:io';
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -24,6 +28,120 @@ SupabaseClient get sb => Supabase.instance.client;
 Future<void> initNasya() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Supabase.initialize(url: supabaseUrl, anonKey: supabaseAnonKey);
+  net.start();
+}
+
+// ---------------------------------------------------------------- connectivity
+
+/// Watches the real connection to the server (not just "wifi is on").
+class NetStatus extends ChangeNotifier {
+  bool online = true;
+  bool justReconnected = false;
+  Timer? _poll;
+  Timer? _flash;
+  bool _checking = false;
+
+  void start() {
+    _check();
+    _poll ??= Timer.periodic(const Duration(seconds: 5), (_) => _check());
+  }
+
+  /// Called when a request fails because of the network; the next check restores the state.
+  void markOffline() => _set(false);
+
+  Future<void> _check() async {
+    if (_checking) return;
+    _checking = true;
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 4);
+    var ok = false;
+    try {
+      final req = await client.getUrl(Uri.parse('$supabaseUrl/auth/v1/health'));
+      req.headers.set('apikey', supabaseAnonKey);
+      final res = await req.close().timeout(const Duration(seconds: 5));
+      await res.drain<void>();
+      ok = res.statusCode < 500;
+    } catch (_) {
+      ok = false;
+    } finally {
+      client.close(force: true);
+      _checking = false;
+    }
+    _set(ok);
+  }
+
+  void _set(bool ok) {
+    if (ok == online) return;
+    online = ok;
+    if (ok) {
+      justReconnected = true;
+      _flash?.cancel();
+      _flash = Timer(const Duration(seconds: 4), () {
+        justReconnected = false;
+        notifyListeners();
+      });
+    } else {
+      justReconnected = false;
+    }
+    notifyListeners();
+  }
+}
+
+final net = NetStatus();
+
+Widget _netBanner(String text, Color color, IconData icon) {
+  return Material(
+    color: color,
+    child: SafeArea(
+      bottom: false,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Row(
+          children: [
+            Icon(icon, color: cCream, size: 18),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(text,
+                  style: const TextStyle(
+                      color: cCream, fontWeight: FontWeight.w600, fontSize: 14)),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+bool isNetworkError(Object e) {
+  if (e is SocketException || e is TimeoutException) return true;
+  final s = e.toString().toLowerCase();
+  const keys = [
+    'socketexception',
+    'failed host lookup',
+    'clientexception',
+    'connection refused',
+    'connection closed',
+    'connection reset',
+    'network is unreachable',
+    'no address associated',
+    'timeoutexception',
+    'handshakeexception',
+    'authretryablefetchexception',
+    'xmlhttprequest',
+    'software caused connection abort',
+    'broken pipe',
+  ];
+  return keys.any((k) => s.contains(k));
+}
+
+/// Random UUID v4, used so that retrying an order never creates a duplicate.
+String newRequestId() {
+  final r = Random.secure();
+  final b = List<int>.generate(16, (_) => r.nextInt(256));
+  b[6] = (b[6] & 0x0f) | 0x40;
+  b[8] = (b[8] & 0x3f) | 0x80;
+  String h(int i) => b[i].toRadixString(16).padLeft(2, '0');
+  return '${h(0)}${h(1)}${h(2)}${h(3)}-${h(4)}${h(5)}-${h(6)}${h(7)}-'
+      '${h(8)}${h(9)}-${h(10)}${h(11)}${h(12)}${h(13)}${h(14)}${h(15)}';
 }
 
 ThemeData nasyaTheme() {
@@ -79,6 +197,27 @@ MaterialApp nasyaMaterialApp(Widget home) {
       GlobalWidgetsLocalizations.delegate,
       GlobalCupertinoLocalizations.delegate,
     ],
+    builder: (context, child) => Column(
+      children: [
+        ListenableBuilder(
+          listenable: net,
+          builder: (context, _) {
+            if (!net.online) {
+              return _netBanner(
+                  'انقطع الاتصال بالإنترنت. هتكمّل من مكانك أول ما يرجع.',
+                  cDanger,
+                  Icons.wifi_off);
+            }
+            if (net.justReconnected) {
+              return _netBanner('رجع الاتصال. كمّل اللي كنت بتعمله.', cGreen,
+                  Icons.wifi);
+            }
+            return const SizedBox.shrink();
+          },
+        ),
+        Expanded(child: child ?? const SizedBox.shrink()),
+      ],
+    ),
     home: home,
   );
 }
@@ -118,7 +257,33 @@ String fmtTime(String iso) {
   return '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
 }
 
+const _errorRules = <List<String>>[
+  ['no open shift', 'افتح وردية الأول.'],
+  ['shift not open', 'الوردية دي اتقفلت قبل كده.'],
+  ['unknown drink', 'الصنف ده مش متاح دلوقتي.'],
+  ['unknown addon', 'إضافة من اللي اخترتها مش متاحة دلوقتي.'],
+  ['empty order', 'الطلب فاضي.'],
+  ['too many items', 'الطلب كبير. قسّمه على طلبين.'],
+  ['staff only', 'الصلاحية دي للموظفين بس.'],
+  ['not authenticated', 'سجّل دخول الأول.'],
+  ['order not found', 'الطلب ده مش موجود.'],
+  ['invalid login', 'الإيميل أو كلمة السر غلط.'],
+  ['already registered', 'الإيميل ده مسجّل قبل كده. جرّب تدخل.'],
+  ['already been registered', 'الإيميل ده مسجّل قبل كده. جرّب تدخل.'],
+  ['password should be', 'كلمة السر لازم تكون 6 حروف على الأقل.'],
+  ['rate limit', 'جرّبت كتير في وقت قصير. استنى شوية وحاول تاني.'],
+  ['email not confirmed', 'الإيميل لسه متأكدش. كلّم الناصية.'],
+  ['unable to validate email', 'اكتب إيميل صحيح.'],
+  ['invalid email', 'اكتب إيميل صحيح.'],
+  ['jwt', 'انتهت جلستك. سجّل دخول تاني.'],
+];
+
+/// Turns any error into a short Arabic message a customer can act on.
 String errorText(Object e) {
+  if (e is String) return e;
+  if (isNetworkError(e)) {
+    return 'انقطع الاتصال بالإنترنت. اتأكد من النت وجرّب تاني.';
+  }
   String m;
   if (e is AuthException) {
     m = e.message;
@@ -127,15 +292,15 @@ String errorText(Object e) {
   } else {
     m = e.toString();
   }
-  if (m.contains('no open shift')) return 'افتح وردية الأول.';
-  if (m.contains('unknown drink') || m.contains('unknown addon')) {
-    return 'الصنف ده مش متاح دلوقتي.';
+  final l = m.toLowerCase();
+  for (final r in _errorRules) {
+    if (l.contains(r[0])) return r[1];
   }
-  if (m.contains('Invalid login')) return 'الإيميل أو كلمة السر غلط.';
-  return m;
+  return 'حصلت مشكلة عندنا. جرّب تاني بعد شوية.';
 }
 
 void showError(BuildContext context, Object e) {
+  if (isNetworkError(e)) net.markOffline();
   ScaffoldMessenger.of(context)
       .showSnackBar(SnackBar(content: Text(errorText(e))));
 }
@@ -303,6 +468,47 @@ class Choices<T> extends StatelessWidget {
   }
 }
 
+/// Friendly full-screen state for "couldn't load": tells the reason and how it resolves.
+class ProblemView extends StatelessWidget {
+  final bool offline;
+  final String title;
+  final String hint;
+  final VoidCallback onRetry;
+  const ProblemView({
+    super.key,
+    required this.offline,
+    required this.title,
+    required this.hint,
+    required this.onRetry,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(offline ? Icons.wifi_off : Icons.error_outline,
+                size: 52, color: cMuted),
+            const SizedBox(height: 12),
+            Text(title,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 4),
+            Text(hint,
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: cMuted)),
+            const SizedBox(height: 12),
+            TextButton(onPressed: onRetry, child: const Text('حاول تاني دلوقتي')),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class SectionLabel extends StatelessWidget {
   final String text;
   const SectionLabel(this.text, {super.key});
@@ -344,6 +550,30 @@ class _AuthPageState extends State<AuthPage> {
   final _name = TextEditingController();
   bool _signUp = false;
   bool _busy = false;
+  bool _retryWhenOnline = false;
+
+  @override
+  void initState() {
+    super.initState();
+    net.addListener(_onNet);
+  }
+
+  @override
+  void dispose() {
+    net.removeListener(_onNet);
+    _email.dispose();
+    _pass.dispose();
+    _name.dispose();
+    super.dispose();
+  }
+
+  // If the connection dropped while signing in, finish the sign-in when it returns.
+  void _onNet() {
+    if (net.online && _retryWhenOnline && !_busy && mounted) {
+      _retryWhenOnline = false;
+      _submit();
+    }
+  }
 
   Future<void> _submit() async {
     final email = _email.text.trim();
@@ -354,11 +584,16 @@ class _AuthPageState extends State<AuthPage> {
     setState(() => _busy = true);
     try {
       if (_signUp) {
-        await sb.auth.signUp(
-          email: email,
-          password: _pass.text,
-          data: {'full_name': _name.text.trim()},
-        );
+        try {
+          await sb.auth.signUp(
+            email: email,
+            password: _pass.text,
+            data: {'full_name': _name.text.trim()},
+          );
+        } on AuthException catch (e) {
+          // A retry after a dropped connection may find the account already created.
+          if (!e.message.toLowerCase().contains('already')) rethrow;
+        }
         if (sb.auth.currentSession == null) {
           await sb.auth.signInWithPassword(email: email, password: _pass.text);
         }
@@ -366,6 +601,7 @@ class _AuthPageState extends State<AuthPage> {
         await sb.auth.signInWithPassword(email: email, password: _pass.text);
       }
     } catch (e) {
+      if (isNetworkError(e)) _retryWhenOnline = true;
       if (mounted) showError(context, e);
     } finally {
       if (mounted) setState(() => _busy = false);

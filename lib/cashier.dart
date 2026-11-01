@@ -52,10 +52,28 @@ class _CashierGateState extends State<CashierGate> {
     return {'staff': true, 'shift': shifts.isEmpty ? null : shifts.first};
   }
 
+  bool _lastFailed = false;
+
   void _reload() {
     setState(() {
       _state = _load();
     });
+  }
+
+  void _onNet() {
+    if (net.online && _lastFailed && mounted) _reload();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    net.addListener(_onNet);
+  }
+
+  @override
+  void dispose() {
+    net.removeListener(_onNet);
+    super.dispose();
   }
 
   @override
@@ -66,16 +84,17 @@ class _CashierGateState extends State<CashierGate> {
         if (snap.connectionState != ConnectionState.done) {
           return const Scaffold(body: Center(child: CircularProgressIndicator()));
         }
+        _lastFailed = snap.hasError;
         if (snap.hasError) {
+          final off = isNetworkError(snap.error!);
           return Scaffold(
-            body: Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(errorText(snap.error!)),
-                  TextButton(onPressed: _reload, child: const Text('حاول تاني')),
-                ],
-              ),
+            body: ProblemView(
+              offline: off,
+              title: off ? 'انقطع الاتصال بالإنترنت' : 'مقدرناش نفتح الوردية',
+              hint: off
+                  ? 'هنكمّل لوحدنا أول ما النت يرجع.'
+                  : errorText(snap.error!),
+              onRetry: _reload,
             ),
           );
         }
@@ -246,13 +265,20 @@ class _OnlineOrdersPanelState extends State<OnlineOrdersPanel> {
     _load();
     _sub = sb.from('orders').stream(primaryKey: ['id']).listen((_) => _load());
     _timer = Timer.periodic(const Duration(seconds: 20), (_) => _load());
+    net.addListener(_onNet);
   }
 
   @override
   void dispose() {
+    net.removeListener(_onNet);
     _sub?.cancel();
     _timer?.cancel();
     super.dispose();
+  }
+
+  // Orders refresh right away when the connection returns.
+  void _onNet() {
+    if (net.online && mounted) _load();
   }
 
   Future<void> _load() async {
@@ -279,7 +305,8 @@ class _OnlineOrdersPanelState extends State<OnlineOrdersPanel> {
           _loadFailed = false;
         });
       }
-    } catch (_) {
+    } catch (e) {
+      if (isNetworkError(e)) net.markOffline();
       if (mounted) setState(() => _loadFailed = true);
     }
   }
@@ -349,7 +376,10 @@ class _OnlineOrdersPanelState extends State<OnlineOrdersPanel> {
               ),
               const Spacer(),
               if (_loadFailed)
-                const Text('النت ضعيف', style: TextStyle(color: cDanger)),
+                const Flexible(
+                  child: Text('مش قادرين نحدّث الطلبات. هنحدّثها أول ما الاتصال يرجع.',
+                      style: TextStyle(color: cDanger, fontSize: 12)),
+                ),
             ],
           ),
           const SizedBox(height: 12),
@@ -505,7 +535,7 @@ class PosPanel extends StatefulWidget {
 }
 
 class _PosPanelState extends State<PosPanel> {
-  late Future<Menu> _menu = loadMenu();
+  late Future<Menu> _menu = _fetchMenu();
   Drink? drink;
   String size = 'medium';
   String sugar = 'normal';
@@ -562,9 +592,52 @@ class _PosPanelState extends State<PosPanel> {
     } catch (e) {
       if (mounted) {
         setState(() => busy = false);
-        showError(context, e);
+        if (isNetworkError(e)) {
+          net.markOffline();
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text(
+                'انقطع الاتصال والفاتورة لسه متسجّلتش. الفاتورة محفوظة قدامك، ادفع تاني لما النت يرجع. ولو مش متأكد إنها اتسجّلت، راجع تقرير الوردية الأول.'),
+            duration: Duration(seconds: 8),
+          ));
+        } else {
+          showError(context, e);
+        }
       }
     }
+  }
+
+  bool _menuFailed = false;
+
+  Future<Menu> _fetchMenu() async {
+    try {
+      final m = await loadMenu();
+      _menuFailed = false;
+      return m;
+    } catch (e) {
+      _menuFailed = true;
+      if (isNetworkError(e)) net.markOffline();
+      rethrow;
+    }
+  }
+
+  void _onNet() {
+    if (net.online && _menuFailed && mounted) {
+      setState(() {
+        _menu = _fetchMenu();
+      });
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    net.addListener(_onNet);
+  }
+
+  @override
+  void dispose() {
+    net.removeListener(_onNet);
+    super.dispose();
   }
 
   @override
@@ -576,15 +649,18 @@ class _PosPanelState extends State<PosPanel> {
           return const Center(child: CircularProgressIndicator());
         }
         if (snap.hasError) {
-          return Center(
-            child: TextButton(
-              onPressed: () {
-                setState(() {
-                  _menu = loadMenu();
-                });
-              },
-              child: const Text('مقدرناش نحمّل المنيو. حاول تاني'),
-            ),
+          final off = isNetworkError(snap.error!);
+          return ProblemView(
+            offline: off,
+            title: off ? 'انقطع الاتصال بالإنترنت' : 'مقدرناش نحمّل المنيو',
+            hint: off
+                ? 'هنحمّل المنيو لوحده أول ما النت يرجع.'
+                : 'جرّب تاني بعد شوية.',
+            onRetry: () {
+              setState(() {
+                _menu = _fetchMenu();
+              });
+            },
           );
         }
         final menu = snap.data!;

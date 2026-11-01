@@ -27,7 +27,41 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  late Future<Menu> _menu = loadMenu();
+  bool _failed = false;
+  late Future<Menu> _menu = _fetch();
+
+  Future<Menu> _fetch() async {
+    try {
+      final m = await loadMenu();
+      _failed = false;
+      return m;
+    } catch (e) {
+      _failed = true;
+      if (isNetworkError(e)) net.markOffline();
+      rethrow;
+    }
+  }
+
+  // The menu loads by itself as soon as the connection comes back.
+  void _onNet() {
+    if (net.online && _failed && mounted) {
+      setState(() {
+        _menu = _fetch();
+      });
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    net.addListener(_onNet);
+  }
+
+  @override
+  void dispose() {
+    net.removeListener(_onNet);
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -58,21 +92,18 @@ class _HomePageState extends State<HomePage> {
             return const Center(child: CircularProgressIndicator());
           }
           if (snap.hasError) {
-            return Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text('مقدرناش نحمّل المنيو'),
-                  TextButton(
-                    onPressed: () {
-                      setState(() {
-                        _menu = loadMenu();
-                      });
-                    },
-                    child: const Text('حاول تاني'),
-                  ),
-                ],
-              ),
+            final off = isNetworkError(snap.error!);
+            return ProblemView(
+              offline: off,
+              title: off ? 'انقطع الاتصال بالإنترنت' : 'حصلت مشكلة وإحنا بنحمّل المنيو',
+              hint: off
+                  ? 'هنحمّل المنيو لوحده أول ما النت يرجع.'
+                  : 'جرّب تاني بعد شوية.',
+              onRetry: () {
+                setState(() {
+                  _menu = _fetch();
+                });
+              },
             );
           }
           final menu = snap.data!;
@@ -299,11 +330,40 @@ class _CartPageState extends State<CartPage> {
   String pay = 'cash';
   int eta = 10;
   bool busy = false;
+  // True after the customer pressed send but the connection was down: we send by ourselves
+  // as soon as it returns. The same request id guarantees one order even if we retry.
+  bool waiting = false;
+  final String requestId = newRequestId();
+
+  @override
+  void initState() {
+    super.initState();
+    net.addListener(_onNet);
+  }
+
+  @override
+  void dispose() {
+    net.removeListener(_onNet);
+    super.dispose();
+  }
+
+  void _onNet() {
+    if (net.online && waiting && !busy && mounted) _place();
+  }
 
   Future<void> _place() async {
-    setState(() => busy = true);
+    if (busy) return;
+    if (!net.online) {
+      setState(() => waiting = true);
+      return;
+    }
+    setState(() {
+      busy = true;
+      waiting = false;
+    });
     try {
-      final res = await sb.rpc('place_order', params: {
+      final res = await sb.rpc('place_order_v2', params: {
+        'p_request_id': requestId,
         'p_items': cart.lines.map((l) => l.toJson()).toList(),
         'p_payment': pay,
         'p_eta': eta,
@@ -317,10 +377,12 @@ class _CartPageState extends State<CartPage> {
         MaterialPageRoute(builder: (_) => TrackPage(orderId: id)),
       );
     } catch (e) {
-      if (mounted) {
-        setState(() => busy = false);
-        showError(context, e);
-      }
+      if (!mounted) return;
+      setState(() {
+        busy = false;
+        waiting = isNetworkError(e);
+      });
+      showError(context, e);
     }
   }
 
@@ -361,11 +423,36 @@ class _CartPageState extends State<CartPage> {
                   ),
                 ),
               const SizedBox(height: 24),
+              if (waiting)
+                Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: cCream2,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: cGold, width: 2),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.wifi_off, color: cMuted),
+                      SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'مفيش إنترنت دلوقتي. طلبك محفوظ وهيتبعت لوحده أول ما النت يرجع، متقفلش الصفحة.',
+                          style: TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               FilledButton(
                 style: FilledButton.styleFrom(
                     minimumSize: const Size.fromHeight(56)),
                 onPressed: busy ? null : _place,
-                child: Text('ابعت الطلب  •  ${money(cart.total)}',
+                child: Text(
+                    waiting
+                        ? 'استنى النت وابعت  •  ${money(cart.total)}'
+                        : 'ابعت الطلب  •  ${money(cart.total)}',
                     style: const TextStyle(fontSize: 17)),
               ),
             ],
@@ -414,6 +501,7 @@ class TrackPage extends StatefulWidget {
 
 class _TrackPageState extends State<TrackPage> {
   Map<String, dynamic>? order;
+  Object? _error;
   StreamSubscription<List<Map<String, dynamic>>>? _sub;
   Timer? _timer;
 
@@ -427,13 +515,20 @@ class _TrackPageState extends State<TrackPage> {
         .eq('id', widget.orderId)
         .listen((_) => _load());
     _timer = Timer.periodic(const Duration(seconds: 15), (_) => _load());
+    net.addListener(_onNet);
   }
 
   @override
   void dispose() {
+    net.removeListener(_onNet);
     _sub?.cancel();
     _timer?.cancel();
     super.dispose();
+  }
+
+  // Refresh right away when the connection returns.
+  void _onNet() {
+    if (net.online && mounted) _load();
   }
 
   Future<void> _load() async {
@@ -444,20 +539,39 @@ class _TrackPageState extends State<TrackPage> {
               '*, order_items(*, drinks(name), order_item_addons(*, addons(name)))')
           .eq('id', widget.orderId)
           .single();
-      if (mounted) setState(() => order = r);
-    } catch (_) {
+      if (mounted) {
+        setState(() {
+          order = r;
+          _error = null;
+        });
+      }
+    } catch (e) {
       // keep the last known state; the next refresh retries
+      if (isNetworkError(e)) net.markOffline();
+      if (mounted) setState(() => _error = e);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final o = order;
+    final err = _error;
     return Scaffold(
       appBar: AppBar(title: const Text('تتبع الطلب')),
-      body: o == null
-          ? const Center(child: CircularProgressIndicator())
-          : _body(o),
+      body: o != null
+          ? _body(o)
+          : err != null
+              ? ProblemView(
+                  offline: isNetworkError(err),
+                  title: isNetworkError(err)
+                      ? 'انقطع الاتصال بالإنترنت'
+                      : 'مقدرناش نفتح الطلب',
+                  hint: isNetworkError(err)
+                      ? 'هنفتح الطلب لوحده أول ما النت يرجع.'
+                      : 'جرّب تاني بعد شوية.',
+                  onRetry: _load,
+                )
+              : const Center(child: CircularProgressIndicator()),
     );
   }
 
@@ -470,6 +584,19 @@ class _TrackPageState extends State<TrackPage> {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
+        ListenableBuilder(
+          listenable: net,
+          builder: (context, _) {
+            if (net.online) return const SizedBox.shrink();
+            return const Padding(
+              padding: EdgeInsets.only(bottom: 12),
+              child: Text(
+                'مش قادرين نحدّث حالة الطلب لأن النت قاطع. هنحدّثها أول ما يرجع، وطلبك ماشي عادي.',
+                style: TextStyle(color: cMuted),
+              ),
+            );
+          },
+        ),
         Container(
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
@@ -591,11 +718,44 @@ class OrdersPage extends StatefulWidget {
 }
 
 class _OrdersPageState extends State<OrdersPage> {
-  late final Future<List<Map<String, dynamic>>> _orders = sb
-      .from('orders')
-      .select('id, order_no, status, total, created_at')
-      .order('created_at', ascending: false)
-      .limit(30);
+  bool _failed = false;
+  late Future<List<Map<String, dynamic>>> _orders = _fetch();
+
+  Future<List<Map<String, dynamic>>> _fetch() async {
+    try {
+      final rows = await sb
+          .from('orders')
+          .select('id, order_no, status, total, created_at')
+          .order('created_at', ascending: false)
+          .limit(30);
+      _failed = false;
+      return rows;
+    } catch (e) {
+      _failed = true;
+      if (isNetworkError(e)) net.markOffline();
+      rethrow;
+    }
+  }
+
+  void _onNet() {
+    if (net.online && _failed && mounted) {
+      setState(() {
+        _orders = _fetch();
+      });
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    net.addListener(_onNet);
+  }
+
+  @override
+  void dispose() {
+    net.removeListener(_onNet);
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -608,7 +768,19 @@ class _OrdersPageState extends State<OrdersPage> {
             return const Center(child: CircularProgressIndicator());
           }
           if (snap.hasError) {
-            return const Center(child: Text('مقدرناش نحمّل الطلبات'));
+            final off = isNetworkError(snap.error!);
+            return ProblemView(
+              offline: off,
+              title: off ? 'انقطع الاتصال بالإنترنت' : 'مقدرناش نحمّل الطلبات',
+              hint: off
+                  ? 'هنحمّل طلباتك لوحدها أول ما النت يرجع.'
+                  : 'جرّب تاني بعد شوية.',
+              onRetry: () {
+                setState(() {
+                  _orders = _fetch();
+                });
+              },
+            );
           }
           final rows = snap.data!;
           if (rows.isEmpty) {
