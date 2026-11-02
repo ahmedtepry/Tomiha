@@ -10,9 +10,37 @@ import 'core.dart';
 import 'update.dart';
 import 'appearance.dart';
 import 'delivery.dart';
+import 'ops.dart';
 
 const _orderSelect =
     '*, profiles(full_name), order_items(*, drinks(name, drink_prices(size)), order_item_addons(*, addons(name)))';
+
+/// The signed-in employee (job, name, employee number), loaded by the gate.
+Map<String, dynamic> myStaff = {};
+/// Result of today's check-in, shown once after opening the shift.
+Map<String, dynamic>? pendingWelcome;
+
+bool get isOwner => myStaff['role'] == 'manager';
+
+/// Which order steps this employee may press. Accounts without a job keep everything.
+bool canSet(String status) {
+  if (isOwner) return true;
+  switch (myStaff['staff_role']) {
+    case 'reception':
+      return status == 'received' || status == 'cancelled';
+    case 'barista':
+      return status == 'preparing' || status == 'ready';
+    case 'delivery':
+      return status == 'on_the_way' || status == 'delivered';
+    case 'seller':
+      return status == 'preparing' || status == 'ready' || status == 'delivered';
+    default:
+      return true;
+  }
+}
+
+bool get canConfirmPayment =>
+    isOwner || const [null, 'reception', 'seller'].contains(myStaff['staff_role']);
 
 class CashierApp extends StatelessWidget {
   const CashierApp({super.key});
@@ -41,9 +69,14 @@ class _CashierGateState extends State<CashierGate> {
 
   Future<Map<String, dynamic>> _load() async {
     final uid = sb.auth.currentUser!.id;
-    final prof =
-        await sb.from('profiles').select('role').eq('id', uid).maybeSingle();
+    final prof = await sb
+        .from('profiles')
+        .select('role, staff_role, full_name, employee_no, active')
+        .eq('id', uid)
+        .maybeSingle();
+    myStaff = prof ?? {};
     final role = prof?['role'];
+    if (prof?['active'] == false) return {'staff': false};
     if (role != 'cashier' && role != 'manager') return {'staff': false};
     final shifts = await sb
         .from('shifts')
@@ -139,15 +172,34 @@ class OpenShiftPage extends StatefulWidget {
 
 class _OpenShiftPageState extends State<OpenShiftPage> {
   final _cash = TextEditingController(text: '0');
+  final _pass = TextEditingController();
   bool _busy = false;
 
+  @override
+  void dispose() {
+    _cash.dispose();
+    _pass.dispose();
+    super.dispose();
+  }
+
   Future<void> _open() async {
+    if (_pass.text.isEmpty) {
+      showError(context, 'اكتب كلمة السر عشان تأكد فتح الوردية.');
+      return;
+    }
     setState(() => _busy = true);
     try {
+      // Opening a shift needs the employee's own password again.
+      await sb.auth.signInWithPassword(
+          email: sb.auth.currentUser!.email!, password: _pass.text);
       await sb.from('shifts').insert({
         'cashier_id': sb.auth.currentUser!.id,
         'opening_cash': double.tryParse(_cash.text.trim()) ?? 0,
       });
+      try {
+        final r = await sb.rpc('staff_check_in');
+        pendingWelcome = Map<String, dynamic>.from(r as Map);
+      } catch (_) {}
       widget.onOpened();
     } catch (e) {
       if (mounted) {
@@ -177,16 +229,30 @@ class _OpenShiftPageState extends State<OpenShiftPage> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Text('افتح الوردية',
-                  style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800)),
+              Text(
+                  (myStaff['full_name'] as String?)?.isNotEmpty == true
+                      ? 'أهلاً يا ${myStaff['full_name']}'
+                      : 'أهلاً بيك',
+                  style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w800)),
+              const SizedBox(height: 4),
+              if (myStaff['employee_no'] != null)
+                Text('رقمك الوظيفي ${myStaff['employee_no']}',
+                    style: const TextStyle(color: cBrand, fontWeight: FontWeight.w700)),
               const SizedBox(height: 8),
-              const Text('اكتب الكاش اللي في الدرج دلوقتي.',
+              const Text('اكتب الكاش اللي في الدرج وكلمة السر عشان نفتح الوردية.',
                   style: TextStyle(color: cMuted)),
               const SizedBox(height: 16),
               TextField(
                 controller: _cash,
                 keyboardType: TextInputType.number,
                 decoration: const InputDecoration(labelText: 'كاش بداية الوردية (ج)'),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _pass,
+                obscureText: true,
+                decoration: const InputDecoration(labelText: 'كلمة السر (تأكيد)'),
+                onSubmitted: (_) => _open(),
               ),
               const SizedBox(height: 16),
               FilledButton(
@@ -204,10 +270,64 @@ class _OpenShiftPageState extends State<OpenShiftPage> {
 
 // ---------------------------------------------------------------- home
 
-class CashierHome extends StatelessWidget {
+class CashierHome extends StatefulWidget {
   final Map<String, dynamic> shift;
   final VoidCallback onClosed;
   const CashierHome({super.key, required this.shift, required this.onClosed});
+  @override
+  State<CashierHome> createState() => _CashierHomeState();
+}
+
+class _CashierHomeState extends State<CashierHome> {
+  Map<String, dynamic> get shift => widget.shift;
+  VoidCallback get onClosed => widget.onClosed;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _welcome());
+  }
+
+  Future<void> _welcome() async {
+    if (!mounted) return;
+    final name = (myStaff['full_name'] as String?)?.trim();
+    final who = (name == null || name.isEmpty) ? '' : ' يا $name';
+    final w = pendingWelcome;
+    pendingWelcome = null;
+    if (w == null || w['skipped'] == true || w['already'] == true) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('أهلاً بيك$who. يوم موفق!')));
+      return;
+    }
+    final d = (w['delta_minutes'] as num?)?.toInt() ?? 0;
+    final bonus = (w['bonus'] as num?)?.toDouble() ?? 0;
+    String msg;
+    IconData icon;
+    if (d >= 2) {
+      msg = 'اتأخرت $d دقيقة عن ميعادك. حاول تيجي في ميعادك المرة الجاية، ويومك حلو.';
+      icon = Icons.schedule;
+    } else if (d <= -5) {
+      msg = 'جاي قبل ميعادك بـ ${-d} دقيقة، تسلم يا بطل!'
+          '${bonus > 0 ? '\nمكافأتك النهاردة ${money(bonus)}.' : ''}';
+      icon = Icons.emoji_events_outlined;
+    } else {
+      msg = 'جيت في ميعادك. تسلم!';
+      icon = Icons.check_circle_outline;
+    }
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        icon: Icon(icon, color: cBrand, size: 40),
+        title: Text('أهلاً بيك$who'),
+        content: Text(
+            '${w['employee_no'] != null ? 'رقمك الوظيفي ${w['employee_no']}\n' : ''}$msg'),
+        actions: [
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx), child: const Text('يلا نشتغل')),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -217,14 +337,24 @@ class CashierHome extends StatelessWidget {
             'BONNAYA • كاشير  (وردية من ${fmtTime(shift['opened_at'] as String)})'),
         actions: [
           const VersionButton(),
-          IconButton(
-            tooltip: 'شاشة الترحيب (للمالك)',
-            icon: const Icon(Icons.palette_outlined),
-            onPressed: () => showDialog<void>(
-              context: context,
-              builder: (_) => const WelcomeSettingsDialog(),
+          if (isOwner)
+            IconButton(
+              tooltip: 'إعدادات التشغيل (مواعيد الشغل والمكافآت)',
+              icon: const Icon(Icons.tune),
+              onPressed: () => showDialog<void>(
+                context: context,
+                builder: (_) => const OpsSettingsDialog(),
+              ),
             ),
-          ),
+          if (isOwner)
+            IconButton(
+              tooltip: 'شاشة الترحيب',
+              icon: const Icon(Icons.palette_outlined),
+              onPressed: () => showDialog<void>(
+                context: context,
+                builder: (_) => const WelcomeSettingsDialog(),
+              ),
+            ),
           TextButton.icon(
             icon: const Icon(Icons.summarize_outlined),
             label: const Text('تقرير / قفل الوردية'),
@@ -534,21 +664,21 @@ class _OnlineOrdersPanelState extends State<OnlineOrdersPanel> {
           const SizedBox(height: 10),
           Row(
             children: [
-              if (st == 'pending_payment')
+              if (st == 'pending_payment' && canConfirmPayment)
                 Expanded(
                   child: FilledButton(
                     onPressed: () => _confirmPayment(id),
                     child: const Text('تأكدت من التحويل • أكّد الأوردر'),
                   ),
                 ),
-              if (st == 'received')
+              if (st == 'received' && canSet('preparing'))
                 Expanded(
                   child: FilledButton(
                     onPressed: () => _status(id, 'preparing'),
                     child: const Text('ابدأ التحضير'),
                   ),
                 ),
-              if (st == 'preparing')
+              if (st == 'preparing' && canSet('ready'))
                 Expanded(
                   child: FilledButton(
                     style: FilledButton.styleFrom(backgroundColor: cGreen),
@@ -556,7 +686,7 @@ class _OnlineOrdersPanelState extends State<OnlineOrdersPanel> {
                     child: const Text('جهّزت الطلب'),
                   ),
                 ),
-              if (st == 'ready')
+              if (st == 'ready' && canSet('on_the_way'))
                 Expanded(
                   child: FilledButton(
                     style: FilledButton.styleFrom(backgroundColor: cInk),
@@ -564,7 +694,7 @@ class _OnlineOrdersPanelState extends State<OnlineOrdersPanel> {
                     child: const Text('خرج للتوصيل'),
                   ),
                 ),
-              if (st == 'on_the_way')
+              if (st == 'on_the_way' && canSet('delivered'))
                 Expanded(
                   child: FilledButton(
                     style: FilledButton.styleFrom(backgroundColor: cInk),
@@ -582,11 +712,12 @@ class _OnlineOrdersPanelState extends State<OnlineOrdersPanel> {
           Row(
             children: [
               const Spacer(),
-              TextButton(
-                style: TextButton.styleFrom(foregroundColor: cDanger),
-                onPressed: () => _cancel(id),
-                child: const Text('إلغاء'),
-              ),
+              if (canSet('cancelled'))
+                TextButton(
+                  style: TextButton.styleFrom(foregroundColor: cDanger),
+                  onPressed: () => _cancel(id),
+                  child: const Text('إلغاء'),
+                ),
             ],
           ),
         ],

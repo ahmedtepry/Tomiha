@@ -272,6 +272,10 @@ const _errorRules = <List<String>>[
   ['empty order', 'الطلب فاضي.'],
   ['too many items', 'الطلب كبير. قسّمه على طلبين.'],
   ['staff only', 'الصلاحية دي للموظفين بس.'],
+  ['not allowed', 'مفيش عندك صلاحية للخطوة دي.'],
+  ['store_closed', 'إحنا مقفولين دلوقتي. جرّب في مواعيد الشغل.'],
+  ['address required', 'اكتب عنوان التوصيل.'],
+  ['payment reference', 'اكتب رقم المحفظة اللي حوّلت منها.'],
   ['not authenticated', 'سجّل دخول الأول.'],
   ['order not found', 'الطلب ده مش موجود.'],
   ['invalid login', 'الإيميل أو كلمة السر غلط.'],
@@ -654,9 +658,15 @@ class _AuthPageState extends State<AuthPage> {
   }
 
   Future<void> _submit() async {
-    final email = _email.text.trim();
+    final raw = _email.text.trim();
+    // Staff and the owner sign in with a username; customers use their email.
+    final email = raw.contains('@') || _signUp ? raw : '${raw.toLowerCase()}@bonnaya.app';
     if (email.isEmpty || _pass.text.length < 6) {
       showError(context, 'اكتب الإيميل وكلمة سر 6 حروف على الأقل.');
+      return;
+    }
+    if (_signUp && !raw.contains('@')) {
+      showError(context, 'اكتب إيميل صحيح.');
       return;
     }
     setState(() => _busy = true);
@@ -734,7 +744,8 @@ class _AuthPageState extends State<AuthPage> {
               TextField(
                 controller: _email,
                 keyboardType: TextInputType.emailAddress,
-                decoration: const InputDecoration(labelText: 'الإيميل'),
+                decoration: InputDecoration(
+                    labelText: widget.allowSignUp ? 'الإيميل' : 'اسم المستخدم'),
               ),
               const SizedBox(height: 12),
               TextField(

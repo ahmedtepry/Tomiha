@@ -8,6 +8,7 @@ import 'welcome.dart';
 import 'update.dart';
 import 'avatars.dart';
 import 'delivery.dart';
+import 'ops.dart';
 
 class CustomerApp extends StatelessWidget {
   const CustomerApp({super.key});
@@ -32,12 +33,14 @@ class _HomePageState extends State<HomePage> {
   bool _failed = false;
   late Future<Menu> _menu = _fetch();
   List<String> _top = [];
+  StoreStatus? _store;
   final _search = TextEditingController();
   String _q = '';
 
   Future<Menu> _fetch() async {
     try {
       final m = await loadMenu();
+      _store = await loadStoreStatus();
       try {
         final r = await sb.rpc('top_drinks', params: {'p_limit': 8});
         _top = [for (final x in (r as List)) (x as Map)['drink_id'] as String];
@@ -119,6 +122,7 @@ class _HomePageState extends State<HomePage> {
           return ListView(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
             children: [
+              if (_store != null && !_store!.open) ClosedBanner(status: _store!),
               TextField(
                 controller: _search,
                 onChanged: (v) => setState(() => _q = v.trim()),
@@ -630,6 +634,7 @@ class CartPage extends StatefulWidget {
 }
 
 class _CartPageState extends State<CartPage> {
+  StoreStatus? _store;
   Address? _addr;
   Address? _saved;
   ({String number, String name}) _wallet = (number: '', name: '');
@@ -644,6 +649,9 @@ class _CartPageState extends State<CartPage> {
   void initState() {
     super.initState();
     net.addListener(_onNet);
+    loadStoreStatus().then((s) {
+      if (mounted) setState(() => _store = s);
+    });
     loadWallet().then((w) {
       if (mounted) setState(() => _wallet = w);
     });
@@ -713,6 +721,10 @@ class _CartPageState extends State<CartPage> {
       final ok = await ensureSignedIn(context);
       if (!ok || !mounted) return;
     }
+    if (_store != null && !_store!.open) {
+      showError(context, _store!.message);
+      return;
+    }
     if (_addr == null) {
       showError(context, 'حدّد عنوان التوصيل الأول.');
       return;
@@ -773,6 +785,7 @@ class _CartPageState extends State<CartPage> {
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
+              if (_store != null && !_store!.open) ClosedBanner(status: _store!),
               for (var i = 0; i < cart.lines.length; i++) _line(i),
               const SectionLabel('عنوان التوصيل'),
               Container(
@@ -885,7 +898,7 @@ class _CartPageState extends State<CartPage> {
               FilledButton(
                 style: FilledButton.styleFrom(
                     minimumSize: const Size.fromHeight(56)),
-                onPressed: busy ? null : _place,
+                onPressed: busy || (_store != null && !_store!.open) ? null : _place,
                 child: Text(
                     waiting
                         ? 'استنى النت وابعت  •  ${money(cart.total)}'
