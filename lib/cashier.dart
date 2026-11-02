@@ -9,6 +9,7 @@ import 'package:printing/printing.dart';
 import 'core.dart';
 import 'update.dart';
 import 'appearance.dart';
+import 'delivery.dart';
 
 const _orderSelect =
     '*, profiles(full_name), order_items(*, drinks(name, drink_prices(size)), order_item_addons(*, addons(name)))';
@@ -298,10 +299,10 @@ class _OnlineOrdersPanelState extends State<OnlineOrdersPanel> {
           .from('orders')
           .select(_orderSelect)
           .eq('source', 'app')
-          .inFilter('status', ['received', 'preparing', 'ready'])
+          .inFilter('status', ['pending_payment', 'received', 'preparing', 'ready', 'on_the_way'])
           .order('created_at');
       final fresh = rows
-          .where((o) => o['status'] == 'received' && !_seen.contains(o['id']))
+          .where((o) => (o['status'] == 'received' || o['status'] == 'pending_payment') && !_seen.contains(o['id']))
           .toList();
       for (final o in rows) {
         _seen.add(o['id'] as String);
@@ -326,6 +327,15 @@ class _OnlineOrdersPanelState extends State<OnlineOrdersPanel> {
     try {
       await sb.rpc('set_order_status',
           params: {'p_order': id, 'p_status': status});
+      await _load();
+    } catch (e) {
+      if (mounted) showError(context, e);
+    }
+  }
+
+  Future<void> _confirmPayment(String id) async {
+    try {
+      await sb.rpc('confirm_order_payment', params: {'p_order': id});
       await _load();
     } catch (e) {
       if (mounted) showError(context, e);
@@ -417,7 +427,7 @@ class _OnlineOrdersPanelState extends State<OnlineOrdersPanel> {
     final name = (o['profiles'] as Map<String, dynamic>?)?['full_name'];
     final isCash = o['payment_method'] == 'cash';
     final paid = o['payment_status'] == 'paid';
-    final chipColor = st == 'received'
+    final chipColor = st == 'received' || st == 'pending_payment'
         ? cGold
         : st == 'preparing'
             ? cGreen
@@ -426,9 +436,11 @@ class _OnlineOrdersPanelState extends State<OnlineOrdersPanel> {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: st == 'received' ? cCream2 : cCream,
+        color: st == 'received' || st == 'pending_payment' ? cCream2 : cCream,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: st == 'received' ? cBrand : cHair, width: 2),
+        border: Border.all(
+            color: st == 'received' || st == 'pending_payment' ? cBrand : cHair,
+            width: 2),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -472,6 +484,42 @@ class _OnlineOrdersPanelState extends State<OnlineOrdersPanel> {
                 style: const TextStyle(color: cMuted, fontSize: 13)),
             const SizedBox(height: 6),
           ],
+          if ((o['address_text'] as String?)?.isNotEmpty == true)
+            Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: cCream2,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: cHair),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.location_on, color: cBrand, size: 20),
+                  const SizedBox(width: 6),
+                  Expanded(child: Text('${o['address_text']}')),
+                  TextButton(
+                    onPressed: () => openMaps(
+                        context,
+                        Address(
+                          text: '',
+                          lat: (o['lat'] as num?)?.toDouble(),
+                          lng: (o['lng'] as num?)?.toDouble(),
+                          url: o['maps_url'] as String?,
+                        ).mapsLink),
+                    child: const Text('افتح الموقع'),
+                  ),
+                ],
+              ),
+            ),
+          if (!isCash && (o['pay_ref'] as String?)?.isNotEmpty == true)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text('التحويل من محفظة: ${o['pay_ref']}',
+                  textDirection: TextDirection.rtl,
+                  style: const TextStyle(color: cGold, fontWeight: FontWeight.w700)),
+            ),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -486,6 +534,13 @@ class _OnlineOrdersPanelState extends State<OnlineOrdersPanel> {
           const SizedBox(height: 10),
           Row(
             children: [
+              if (st == 'pending_payment')
+                Expanded(
+                  child: FilledButton(
+                    onPressed: () => _confirmPayment(id),
+                    child: const Text('تأكدت من التحويل • أكّد الأوردر'),
+                  ),
+                ),
               if (st == 'received')
                 Expanded(
                   child: FilledButton(
@@ -505,6 +560,14 @@ class _OnlineOrdersPanelState extends State<OnlineOrdersPanel> {
                 Expanded(
                   child: FilledButton(
                     style: FilledButton.styleFrom(backgroundColor: cInk),
+                    onPressed: () => _status(id, 'on_the_way'),
+                    child: const Text('خرج للتوصيل'),
+                  ),
+                ),
+              if (st == 'on_the_way')
+                Expanded(
+                  child: FilledButton(
+                    style: FilledButton.styleFrom(backgroundColor: cInk),
                     onPressed: () => _status(id, 'delivered'),
                     child: const Text('تم التسليم'),
                   ),
@@ -518,11 +581,6 @@ class _OnlineOrdersPanelState extends State<OnlineOrdersPanel> {
           ),
           Row(
             children: [
-              if (!isCash && !paid)
-                TextButton(
-                  onPressed: () => _paid(id),
-                  child: const Text('تأكيد الدفع'),
-                ),
               const Spacer(),
               TextButton(
                 style: TextButton.styleFrom(foregroundColor: cDanger),

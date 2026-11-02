@@ -7,6 +7,7 @@ import 'core.dart';
 import 'welcome.dart';
 import 'update.dart';
 import 'avatars.dart';
+import 'delivery.dart';
 
 class CustomerApp extends StatelessWidget {
   const CustomerApp({super.key});
@@ -629,8 +630,10 @@ class CartPage extends StatefulWidget {
 }
 
 class _CartPageState extends State<CartPage> {
-  String pay = 'cash';
-  int eta = 10;
+  Address? _addr;
+  Address? _saved;
+  ({String number, String name}) _wallet = (number: '', name: '');
+  final _payRef = TextEditingController();
   bool busy = false;
   // True after the customer pressed send but the connection was down: we send by ourselves
   // as soon as it returns. The same request id guarantees one order even if we retry.
@@ -641,11 +644,23 @@ class _CartPageState extends State<CartPage> {
   void initState() {
     super.initState();
     net.addListener(_onNet);
+    loadWallet().then((w) {
+      if (mounted) setState(() => _wallet = w);
+    });
+    loadSavedAddress().then((a) {
+      if (mounted && a != null) {
+        setState(() {
+          _saved = a;
+          _addr ??= a;
+        });
+      }
+    });
   }
 
   @override
   void dispose() {
     net.removeListener(_onNet);
+    _payRef.dispose();
     super.dispose();
   }
 
@@ -653,11 +668,58 @@ class _CartPageState extends State<CartPage> {
     if (net.online && waiting && !busy && mounted) _place();
   }
 
+  Future<void> _chooseAddress() async {
+    final a = await showModalBottomSheet<Address>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      backgroundColor: cCream,
+      builder: (_) => AddressSheet(initial: _addr),
+    );
+    if (a == null || !mounted) return;
+    setState(() => _addr = a);
+    final same = _saved != null &&
+        _saved!.text == a.text &&
+        _saved!.mapsLink == a.mapsLink;
+    if (same) return;
+    final save = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('حفظ العنوان'),
+        content: const Text('تحفظ العنوان ده كعنوان افتراضي؟'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('لأ')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('أوك')),
+        ],
+      ),
+    );
+    if (save == true) {
+      try {
+        await saveDefaultAddress(a);
+        if (mounted) setState(() => _saved = a);
+      } catch (e) {
+        if (mounted) showError(context, e);
+      }
+    }
+  }
+
   Future<void> _place() async {
     if (busy) return;
     if (sb.auth.currentSession == null) {
       final ok = await ensureSignedIn(context);
       if (!ok || !mounted) return;
+    }
+    if (_addr == null) {
+      showError(context, 'حدّد عنوان التوصيل الأول.');
+      return;
+    }
+    if (_payRef.text.trim().isEmpty) {
+      showError(context, 'اكتب رقم المحفظة اللي حوّلت منها، عشان نتأكد من التحويل.');
+      return;
     }
     if (!net.online) {
       setState(() => waiting = true);
@@ -668,12 +730,11 @@ class _CartPageState extends State<CartPage> {
       waiting = false;
     });
     try {
-      final res = await sb.rpc('place_order_v2', params: {
+      final res = await sb.rpc('place_order_v3', params: {
         'p_request_id': requestId,
         'p_items': cart.lines.map((l) => l.toJson()).toList(),
-        'p_payment': pay,
-        'p_eta': eta,
-        'p_source': 'app',
+        'p_address': _addr!.toJson(),
+        'p_pay_ref': _payRef.text.trim(),
       });
       final id = res as String;
       cart.clear();
@@ -713,28 +774,91 @@ class _CartPageState extends State<CartPage> {
             padding: const EdgeInsets.all(16),
             children: [
               for (var i = 0; i < cart.lines.length; i++) _line(i),
-              const SectionLabel('هتوصل بعد قد إيه؟'),
-              Choices<int>(
-                values: const [5, 10, 15],
-                selected: eta,
-                label: (m) => '$m دقيقة',
-                onChanged: (v) => setState(() => eta = v),
+              const SectionLabel('عنوان التوصيل'),
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: cCream2,
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: _addr == null ? cGold : cHair, width: 2),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (_addr != null) ...[
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Icon(Icons.location_on, color: cBrand),
+                          const SizedBox(width: 8),
+                          Expanded(
+                              child: Text(_addr!.text,
+                                  style: const TextStyle(
+                                      fontSize: 15, fontWeight: FontWeight.w600))),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                    ],
+                    OutlinedButton.icon(
+                      onPressed: _chooseAddress,
+                      icon: Icon(_addr == null ? Icons.add_location_alt : Icons.edit_location_alt),
+                      label: Text(_addr == null ? 'حدّد عنوان التوصيل' : 'غيّر العنوان'),
+                    ),
+                  ],
+                ),
               ),
               const SectionLabel('الدفع'),
-              Choices<String>(
-                values: const ['cash', 'wallet'],
-                selected: pay,
-                label: (p) => p == 'cash' ? 'كاش عند الاستلام' : 'محفظة إلكترونية',
-                onChanged: (v) => setState(() => pay = v),
-              ),
-              if (pay == 'wallet')
-                const Padding(
-                  padding: EdgeInsets.only(top: 8),
-                  child: Text(
-                    'الدفع بالمحفظة بيتأكد عند الاستلام. الربط مع بوابة دفع هييجي في مرحلة تانية.',
-                    style: TextStyle(color: cMuted, fontSize: 13),
-                  ),
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: cCream2,
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: cHair),
                 ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Row(children: [
+                      Icon(Icons.account_balance_wallet_outlined, color: cBrand),
+                      SizedBox(width: 8),
+                      Text('محفظة إلكترونية',
+                          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                    ]),
+                    const SizedBox(height: 8),
+                    Text(
+                      _wallet.number.isEmpty
+                          ? 'حوّل ${money(cart.total)} على المحفظة، وبعدين اكتب رقم المحفظة اللي حوّلت منها. هنبعتلك رقم المحفظة أول ما تبعت الطلب.'
+                          : 'حوّل ${money(cart.total)} على المحفظة رقم:',
+                      style: const TextStyle(color: cMuted, height: 1.6),
+                    ),
+                    if (_wallet.number.isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      SelectableText(_wallet.number,
+                          textDirection: TextDirection.ltr,
+                          style: const TextStyle(
+                              fontSize: 24,
+                              fontWeight: FontWeight.w800,
+                              color: cBrand)),
+                      if (_wallet.name.isNotEmpty)
+                        Text(_wallet.name,
+                            style: const TextStyle(color: cMuted)),
+                    ],
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _payRef,
+                      keyboardType: TextInputType.phone,
+                      textDirection: TextDirection.ltr,
+                      decoration: const InputDecoration(
+                          labelText: 'رقم المحفظة اللي حوّلت منها'),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'الطلب بيتأكد أول ما الكاشير يتأكد من التحويل، وبعدها بنجهزه ونبعتهولك.',
+                      style: TextStyle(color: cMuted, fontSize: 13),
+                    ),
+                  ],
+                ),
+              ),
               const SizedBox(height: 24),
               if (waiting)
                 Container(
@@ -765,7 +889,7 @@ class _CartPageState extends State<CartPage> {
                 child: Text(
                     waiting
                         ? 'استنى النت وابعت  •  ${money(cart.total)}'
-                        : 'ابعت الطلب  •  ${money(cart.total)}',
+                        : 'اتحوّل؟ ابعت الطلب  •  ${money(cart.total)}',
                     style: const TextStyle(fontSize: 17)),
               ),
             ],
@@ -888,7 +1012,7 @@ class _TrackPageState extends State<TrackPage> {
   Widget _body(Map<String, dynamic> o) {
     final status = o['status'] as String;
     final items = (o['order_items'] as List).cast<Map<String, dynamic>>();
-    final idx = const ['received', 'preparing', 'ready', 'delivered']
+    final idx = const ['pending_payment', 'received', 'preparing', 'ready', 'on_the_way', 'delivered']
         .indexOf(status);
     final eta = o['eta_minutes'];
     return ListView(
@@ -924,8 +1048,12 @@ class _TrackPageState extends State<TrackPage> {
                       color: cOnBrand, fontSize: 30, fontWeight: FontWeight.w800)),
               const SizedBox(height: 4),
               Text(
-                status == 'ready'
-                    ? 'قهوتك جاهزة، العربية مستنياك.'
+                status == 'pending_payment'
+                    ? 'بنتأكد من التحويل، وأول ما نتأكد هنأكد طلبك ونجهزه.'
+                    : status == 'on_the_way'
+                    ? 'الطلب في الطريق ليك.'
+                    : status == 'ready'
+                    ? 'قهوتك جاهزة وهتتبعتلك دلوقتي.'
                     : status == 'cancelled'
                         ? 'الطلب اتلغى. لو فيه مشكلة كلّم بنايه.'
                         : status == 'delivered'
@@ -940,9 +1068,11 @@ class _TrackPageState extends State<TrackPage> {
         ),
         if (status != 'cancelled') ...[
           const SizedBox(height: 20),
-          _step('تم استلام الطلب', 0, idx),
-          _step('جاري التحضير', 1, idx),
-          _step('جاهز للاستلام', 2, idx),
+          _step('بانتظار تأكيد التحويل', 0, idx),
+          _step('تم تأكيد الأوردر', 1, idx),
+          _step('جاري التحضير', 2, idx),
+          _step('جاهز', 3, idx),
+          _step('في الطريق ليك', 4, idx),
         ],
         const SizedBox(height: 16),
         Container(
