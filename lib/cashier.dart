@@ -408,10 +408,10 @@ class _CashierHomeState extends State<CashierHome> {
       body: widget.mode == 'sell'
           ? const PosPanel()
           : widget.mode == 'online'
-              ? const Center(
+              ? Center(
                   child: ConstrainedBox(
-                      constraints: BoxConstraints(maxWidth: 800),
-                      child: OnlineOrdersPanel()))
+                      constraints: const BoxConstraints(maxWidth: 800),
+                      child: const OnlineOrdersPanel()))
               : Row(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
