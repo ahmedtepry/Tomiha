@@ -788,7 +788,7 @@ class _AuthPageState extends State<AuthPage> {
                               letterSpacing: 6,
                               color: cBrand)),
                       SizedBox(height: 10),
-                      Text('قهوتك في الطريق. أول ما تدخل، البرنامج يفتحلك على شغلك.',
+                      Text('قهوتك في الطريق.',
                           textAlign: TextAlign.center,
                           style: TextStyle(color: cMuted, fontSize: 17)),
                     ],
