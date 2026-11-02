@@ -215,6 +215,7 @@ class CashierHome extends StatelessWidget {
         title: Text(
             'BONNAYA • كاشير  (وردية من ${fmtTime(shift['opened_at'] as String)})'),
         actions: [
+          const VersionButton(),
           IconButton(
             tooltip: 'شاشة الترحيب (للمالك)',
             icon: const Icon(Icons.palette_outlined),

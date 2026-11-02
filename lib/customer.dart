@@ -134,6 +134,8 @@ class _HomePageState extends State<HomePage> {
                   style: TextStyle(color: cMuted)),
               const SizedBox(height: 16),
               for (final d in menu.drinks) DrinkTile(drink: d, addons: menu.addons),
+              const SizedBox(height: 8),
+              const Center(child: VersionButton()),
             ],
           );
         },
