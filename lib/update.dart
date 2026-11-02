@@ -247,7 +247,8 @@ class _UpdateWatcherState extends State<UpdateWatcher>
     if (i == null || !i.available || i.latest <= _dismissedBuild) return;
     if (!mounted) return;
     _showing = true;
-    await promptUpdate(context, i);
+    // Automatic: download inside the app and hand over to the installer.
+    await installUpdate(context, i);
     _showing = false;
     _dismissedBuild = i.latest;
   }
