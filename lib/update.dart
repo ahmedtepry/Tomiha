@@ -3,8 +3,10 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:archive/archive.dart';
+import 'package:open_filex/open_filex.dart';
 import 'package:package_info_plus/package_info_plus.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:path_provider/path_provider.dart';
 
 const _releasesApi =
     'https://api.github.com/repos/ahmedtepry/Tomiha/releases/latest';
@@ -55,8 +57,8 @@ Future<void> promptUpdate(BuildContext context, UpdateInfo i) async {
     builder: (ctx) => AlertDialog(
       title: const Text('فيه تحديث جديد'),
       content: Text(Platform.isWindows
-          ? 'نزّل النسخة الجديدة وفكّ الضغط وشغّلها بدل القديمة.'
-          : 'فيه نسخة أحدث من بنايه. نزّلها وثبّتها فوق القديمة، وبياناتك هتفضل زي ما هي.'),
+          ? 'هننزّل النسخة الجديدة، والبرنامج هيتقفل ويفتح تاني لوحده.'
+          : 'هننزّل النسخة الجديدة من هنا وتثبّتها فوق القديمة، وبياناتك هتفضل زي ما هي.'),
       actions: [
         TextButton(
             onPressed: () => Navigator.pop(ctx, false), child: const Text('بعدين')),
@@ -66,9 +68,106 @@ Future<void> promptUpdate(BuildContext context, UpdateInfo i) async {
       ],
     ),
   );
-  if (go == true) {
-    await launchUrl(Uri.parse(i.url!), mode: LaunchMode.externalApplication);
+  if (go == true && context.mounted) await installUpdate(context, i);
+}
+
+/// Downloads the new build inside the app and installs it.
+Future<void> installUpdate(BuildContext context, UpdateInfo i) async {
+  final progress = ValueNotifier<double?>(null);
+  final nav = Navigator.of(context, rootNavigator: true);
+  final messenger = ScaffoldMessenger.of(context);
+  showDialog<void>(
+    context: context,
+    barrierDismissible: false,
+    builder: (ctx) => PopScope(
+      canPop: false,
+      child: AlertDialog(
+        title: const Text('بننزّل التحديث'),
+        content: ValueListenableBuilder<double?>(
+          valueListenable: progress,
+          builder: (ctx2, v, child) => Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              LinearProgressIndicator(value: v),
+              const SizedBox(height: 12),
+              Text(v == null ? 'استنى شوية...' : '${(v * 100).round()}%'),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+  late File file;
+  try {
+    final dir = await getTemporaryDirectory();
+    file = File('${dir.path}${Platform.pathSeparator}'
+        '${Platform.isWindows ? 'bonnaya-update.zip' : 'bonnaya-update.apk'}');
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 15);
+    final req = await client.getUrl(Uri.parse(i.url!));
+    req.headers.set('User-Agent', 'bonnaya-app');
+    final res = await req.close();
+    if (res.statusCode != 200) throw HttpException('status ${res.statusCode}');
+    final total = res.contentLength;
+    var got = 0;
+    final sink = file.openWrite();
+    await for (final chunk in res) {
+      sink.add(chunk);
+      got += chunk.length;
+      if (total > 0) progress.value = got / total;
+    }
+    await sink.close();
+    client.close();
+  } catch (_) {
+    nav.pop();
+    messenger.showSnackBar(const SnackBar(
+        content: Text('مقدرناش ننزّل التحديث. اتأكد من الإنترنت وجرّب تاني.')));
+    return;
   }
+  nav.pop();
+  try {
+    if (Platform.isWindows) {
+      await _applyWindows(file);
+    } else {
+      final r = await OpenFilex.open(file.path,
+          type: 'application/vnd.android.package-archive');
+      if (r.type != ResultType.done) {
+        messenger.showSnackBar(const SnackBar(
+            content: Text('اسمح للأبلكيشن يثبّت التحديث من الإعدادات وجرّب تاني.')));
+      }
+    }
+  } catch (_) {
+    messenger.showSnackBar(
+        const SnackBar(content: Text('مقدرناش نثبّت التحديث. جرّب تاني بعد شوية.')));
+  }
+}
+
+/// Windows: unzip next to a small script that copies the files over the
+/// running app once it has closed, then opens it again.
+Future<void> _applyWindows(File zip) async {
+  final exe = Platform.resolvedExecutable;
+  final dst = File(exe).parent.path;
+  final tmp = await getTemporaryDirectory();
+  final src = Directory('${tmp.path}\\bonnaya-update');
+  if (src.existsSync()) src.deleteSync(recursive: true);
+  src.createSync(recursive: true);
+  final archive = ZipDecoder().decodeBytes(await zip.readAsBytes());
+  for (final f in archive) {
+    final out = '${src.path}\\${f.name.replaceAll('/', '\\')}';
+    if (f.isFile) {
+      File(out)
+        ..createSync(recursive: true)
+        ..writeAsBytesSync(f.content as List<int>);
+    } else {
+      Directory(out).createSync(recursive: true);
+    }
+  }
+  final bat = File('${tmp.path}\\bonnaya-update.bat');
+  bat.writeAsStringSync('@echo off\r\n'
+      'timeout /t 3 /nobreak >nul\r\n'
+      'xcopy /E /Y /Q "${src.path}\\*" "$dst\\"\r\n'
+      'start "" "$exe"\r\n');
+  await Process.start('cmd', ['/c', bat.path], mode: ProcessStartMode.detached);
+  exit(0);
 }
 
 /// Manual check, with a visible answer. Used by the "فحص التحديث" button.
