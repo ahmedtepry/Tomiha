@@ -29,10 +29,19 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   bool _failed = false;
   late Future<Menu> _menu = _fetch();
+  List<String> _top = [];
+  final _search = TextEditingController();
+  String _q = '';
 
   Future<Menu> _fetch() async {
     try {
       final m = await loadMenu();
+      try {
+        final r = await sb.rpc('top_drinks', params: {'p_limit': 8});
+        _top = [for (final x in (r as List)) (x as Map)['drink_id'] as String];
+      } catch (_) {
+        _top = [];
+      }
       _failed = false;
       return m;
     } catch (e) {
@@ -51,6 +60,17 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  /// Best sellers first; if there are not enough orders yet, fill with the menu.
+  List<Drink> _popular(Menu menu) {
+    final byId = {for (final d in menu.drinks) d.id: d};
+    final out = <Drink>[for (final id in _top) if (byId[id] != null) byId[id]!];
+    for (final d in menu.drinks) {
+      if (out.length >= 8) break;
+      if (!out.contains(d)) out.add(d);
+    }
+    return out;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -60,6 +80,7 @@ class _HomePageState extends State<HomePage> {
   @override
   void dispose() {
     net.removeListener(_onNet);
+    _search.dispose();
     super.dispose();
   }
 
@@ -119,32 +140,76 @@ class _HomePageState extends State<HomePage> {
           return ListView(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
             children: [
-              const Text('عايز إيه النهاردة؟',
-                  style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800)),
-              const SizedBox(height: 4),
-              const Text('اختار القسم، وقهوتك تلاقيها جاهزة.',
-                  style: TextStyle(color: cMuted)),
-              const SizedBox(height: 16),
-              GridView.count(
-                crossAxisCount: 2,
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                crossAxisSpacing: 12,
-                mainAxisSpacing: 12,
-                childAspectRatio: 1.05,
-                children: [
-                  for (final c in menuCategories)
-                    _CategoryCard(
-                      cat: c,
-                      count: menu.drinks.where((d) => d.category == c.id).length,
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                            builder: (_) => CategoryPage(cat: c, menu: menu)),
-                      ),
-                    ),
-                ],
+              TextField(
+                controller: _search,
+                onChanged: (v) => setState(() => _q = v.trim()),
+                decoration: InputDecoration(
+                  hintText: 'دوّر على صنف...',
+                  prefixIcon: const Icon(Icons.search),
+                  suffixIcon: _q.isEmpty
+                      ? null
+                      : IconButton(
+                          icon: const Icon(Icons.close),
+                          onPressed: () => setState(() {
+                            _search.clear();
+                            _q = '';
+                          }),
+                        ),
+                ),
               ),
+              const SizedBox(height: 14),
+              if (_q.isNotEmpty) ...[
+                for (final d in menu.drinks.where((d) => d.name.contains(_q)))
+                  DrinkTile(drink: d, addons: menu.addons),
+                if (!menu.drinks.any((d) => d.name.contains(_q)))
+                  const Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Center(
+                        child: Text('مفيش صنف بالاسم ده.',
+                            style: TextStyle(color: cMuted))),
+                  ),
+              ] else ...[
+                const Text('الأكثر طلباً',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+                const SizedBox(height: 8),
+                SizedBox(
+                  height: 124,
+                  child: ListView(
+                    scrollDirection: Axis.horizontal,
+                    children: [
+                      for (final d in _popular(menu))
+                        _PopularCard(
+                          drink: d,
+                          onTap: () => openDrinkSheet(context, d, menu.addons),
+                        ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Text('الأقسام',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+                const SizedBox(height: 8),
+                GridView.count(
+                  crossAxisCount: 3,
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  crossAxisSpacing: 10,
+                  mainAxisSpacing: 10,
+                  childAspectRatio: 0.92,
+                  children: [
+                    for (final c in menuCategories)
+                      _CategoryCard(
+                        cat: c,
+                        count: menu.drinks.where((d) => d.category == c.id).length,
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) => CategoryPage(cat: c, menu: menu)),
+                        ),
+                      ),
+                  ],
+                ),
+              ],
               const SizedBox(height: 8),
               const Center(child: VersionButton()),
             ],
@@ -190,21 +255,22 @@ class _CategoryCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(22),
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(8),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               CircleAvatar(
-                radius: 30,
+                radius: 24,
                 backgroundColor: cCream,
                 foregroundColor: cBrand,
-                child: Icon(cat.icon, size: 32),
+                child: Icon(cat.icon, size: 26),
               ),
               const SizedBox(height: 10),
               Text(cat.name,
                   textAlign: TextAlign.center,
+                  maxLines: 2,
                   style: const TextStyle(
-                      fontSize: 17, fontWeight: FontWeight.w800)),
+                      fontSize: 13, fontWeight: FontWeight.w800)),
               const SizedBox(height: 2),
               Text('$count صنف', style: const TextStyle(color: cMuted, fontSize: 12)),
             ],
@@ -331,6 +397,64 @@ class BonnayaBar extends StatelessWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+void openDrinkSheet(BuildContext context, Drink drink, List<Addon> addons) {
+  showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    showDragHandle: true,
+    backgroundColor: cCream,
+    builder: (_) => DrinkSheet(drink: drink, addons: addons),
+  );
+}
+
+class _PopularCard extends StatelessWidget {
+  final Drink drink;
+  final VoidCallback onTap;
+  const _PopularCard({required this.drink, required this.onTap});
+  @override
+  Widget build(BuildContext context) {
+    final cat = menuCategories.firstWhere((c) => c.id == drink.category,
+        orElse: () => menuCategories.first);
+    return Padding(
+      padding: const EdgeInsetsDirectional.only(end: 10),
+      child: Material(
+        color: cCream2,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(18),
+          side: const BorderSide(color: cHair),
+        ),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(18),
+          onTap: onTap,
+          child: SizedBox(
+            width: 112,
+            child: Padding(
+              padding: const EdgeInsets.all(8),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(cat.icon, color: cBrand, size: 30),
+                  const SizedBox(height: 6),
+                  Text(drink.name,
+                      textAlign: TextAlign.center,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          fontSize: 13, fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 4),
+                  Text(money(drink.minPrice),
+                      style: const TextStyle(
+                          color: cBrand, fontWeight: FontWeight.w800)),
+                ],
+              ),
+            ),
+          ),
         ),
       ),
     );
