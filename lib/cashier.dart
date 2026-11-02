@@ -11,6 +11,7 @@ import 'update.dart';
 import 'appearance.dart';
 import 'delivery.dart';
 import 'ops.dart';
+import 'admin.dart';
 
 const _orderSelect =
     '*, profiles(full_name), order_items(*, drinks(name, drink_prices(size)), order_item_addons(*, addons(name)))';
@@ -59,7 +60,10 @@ class CashierApp extends StatelessWidget {
 // ---------------------------------------------------------------- gate + shift
 
 class CashierGate extends StatefulWidget {
-  const CashierGate({super.key});
+  /// Owner opening a work screen from the dashboard ('sell' or 'online').
+  final bool forceHome;
+  final String? mode;
+  const CashierGate({super.key, this.forceHome = false, this.mode});
   @override
   State<CashierGate> createState() => _CashierGateState();
 }
@@ -152,11 +156,31 @@ class _CashierGateState extends State<CashierGate> {
             ),
           );
         }
+        // Owner lands on the dashboard; each job lands on its own screen.
+        if (isOwner && !widget.forceHome) return const AdminDashboard();
         final shift = s['shift'];
         if (shift == null) return OpenShiftPage(onOpened: _reload);
+        final String mode;
+        if (widget.mode != null) {
+          mode = widget.mode!;
+        } else {
+          switch (myStaff['staff_role']) {
+            case 'seller':
+              mode = 'sell';
+              break;
+            case 'reception':
+            case 'barista':
+            case 'delivery':
+              mode = 'online';
+              break;
+            default:
+              mode = 'all';
+          }
+        }
         return CashierHome(
           shift: shift as Map<String, dynamic>,
           onClosed: _reload,
+          mode: mode,
         );
       },
     );
@@ -218,7 +242,10 @@ class _OpenShiftPageState extends State<OpenShiftPage> {
           IconButton(
             tooltip: 'خروج',
             icon: const Icon(Icons.logout),
-            onPressed: () => sb.auth.signOut(),
+            onPressed: () {
+              Navigator.of(context).popUntil((r) => r.isFirst);
+              sb.auth.signOut();
+            },
           ),
         ],
       ),
@@ -273,7 +300,9 @@ class _OpenShiftPageState extends State<OpenShiftPage> {
 class CashierHome extends StatefulWidget {
   final Map<String, dynamic> shift;
   final VoidCallback onClosed;
-  const CashierHome({super.key, required this.shift, required this.onClosed});
+  final String mode; // 'all', 'sell' or 'online'
+  const CashierHome(
+      {super.key, required this.shift, required this.onClosed, this.mode = 'all'});
   @override
   State<CashierHome> createState() => _CashierHomeState();
 }
@@ -369,18 +398,28 @@ class _CashierHomeState extends State<CashierHome> {
           IconButton(
             tooltip: 'خروج',
             icon: const Icon(Icons.logout),
-            onPressed: () => sb.auth.signOut(),
+            onPressed: () {
+              Navigator.of(context).popUntil((r) => r.isFirst);
+              sb.auth.signOut();
+            },
           ),
         ],
       ),
-      body: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const SizedBox(width: 440, child: OnlineOrdersPanel()),
-          const VerticalDivider(width: 1, color: cHair),
-          const Expanded(child: PosPanel()),
-        ],
-      ),
+      body: widget.mode == 'sell'
+          ? const PosPanel()
+          : widget.mode == 'online'
+              ? const Center(
+                  child: ConstrainedBox(
+                      constraints: BoxConstraints(maxWidth: 800),
+                      child: OnlineOrdersPanel()))
+              : Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const SizedBox(width: 440, child: OnlineOrdersPanel()),
+                    const VerticalDivider(width: 1, color: cHair),
+                    const Expanded(child: PosPanel()),
+                  ],
+                ),
     );
   }
 }
@@ -1232,7 +1271,7 @@ Future<void> printReceipt(Map<String, dynamic> order) async {
         children: [
           pw.Center(child: t('BONNAYA', b: true, size: 20)),
           pw.SizedBox(height: 4),
-          t('طلب رقم ${order['order_no']}  •  ${fmtTime(order['created_at'] as String)}'),
+          t('${order['invoice_no'] != null ? 'فاتورة رقم ${order['invoice_no']}  •  ' : ''}طلب رقم ${order['order_no']}  •  ${fmtTime(order['created_at'] as String)}'),
           pw.Divider(),
           for (final it in items)
             pw.Padding(

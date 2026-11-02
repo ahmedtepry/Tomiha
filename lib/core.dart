@@ -704,8 +704,7 @@ class _AuthPageState extends State<AuthPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Center(
+    final form = Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 420),
           child: ListView(
@@ -768,7 +767,36 @@ class _AuthPageState extends State<AuthPage> {
             ],
           ),
         ),
-      ),
+      );
+    final wide = MediaQuery.of(context).size.width >= 860 && !widget.allowSignUp;
+    return Scaffold(
+      body: wide
+          ? Row(children: [
+              Expanded(child: form),
+              Expanded(
+                child: Container(
+                  color: cCream2,
+                  child: const Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.local_cafe, size: 96, color: cBrand),
+                      SizedBox(height: 14),
+                      Text('BONNAYA',
+                          style: TextStyle(
+                              fontSize: 54,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 6,
+                              color: cBrand)),
+                      SizedBox(height: 10),
+                      Text('قهوتك في الطريق. أول ما تدخل، البرنامج يفتحلك على شغلك.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: cMuted, fontSize: 17)),
+                    ],
+                  ),
+                ),
+              ),
+            ])
+          : form,
     );
   }
 }
