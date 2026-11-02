@@ -11,7 +11,7 @@ import 'update.dart';
 import 'appearance.dart';
 
 const _orderSelect =
-    '*, profiles(full_name), order_items(*, drinks(name), order_item_addons(*, addons(name)))';
+    '*, profiles(full_name), order_items(*, drinks(name, drink_prices(size)), order_item_addons(*, addons(name)))';
 
 class CashierApp extends StatelessWidget {
   const CashierApp({super.key});
@@ -725,22 +725,24 @@ class _PosPanelState extends State<PosPanel> {
                 ),
             ],
           ),
-          const SectionLabel('الحجم'),
-          Choices<String>(
-            values: sizes,
-            selected: size,
-            label: (s) => d == null
-                ? sizeLabel[s]!
-                : '${sizeLabel[s]}  ${money(d.prices[s] ?? 0)}',
-            onChanged: (v) => setState(() => size = v),
-          ),
-          const SectionLabel('السكر'),
-          Choices<String>(
-            values: sugarKeys,
-            selected: sugar,
-            label: (s) => sugarLabel[s]!,
-            onChanged: (v) => setState(() => sugar = v),
-          ),
+          if (d == null || d.hasOptions) ...[
+            const SectionLabel('الحجم'),
+            Choices<String>(
+              values: sizes,
+              selected: size,
+              label: (s) => d == null
+                  ? sizeLabel[s]!
+                  : '${sizeLabel[s]}  ${money(d.prices[s] ?? 0)}',
+              onChanged: (v) => setState(() => size = v),
+            ),
+            const SectionLabel('السكر'),
+            Choices<String>(
+              values: sugarKeys,
+              selected: sugar,
+              label: (s) => sugarLabel[s]!,
+              onChanged: (v) => setState(() => sugar = v),
+            ),
+          ],
           const SectionLabel('إضافات'),
           Wrap(
             spacing: 8,
@@ -819,18 +821,14 @@ class _PosPanelState extends State<PosPanel> {
                         const Divider(color: cHair, height: 12),
                     itemBuilder: (context, i) {
                       final l = ticket[i];
-                      final notes = [
-                        sugarDesc[l.sugar] ?? '',
-                        for (final a in l.addons) '+ ${a.name}',
-                      ].join(' · ');
+                      final notes = l.notes;
                       return Row(
                         children: [
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(
-                                    '${l.drink.name} ${sizeLabel[l.size]} × ${l.qty}',
+                                Text(l.title,
                                     style: const TextStyle(
                                         fontWeight: FontWeight.w700)),
                                 Text(notes,

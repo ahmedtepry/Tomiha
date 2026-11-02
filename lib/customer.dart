@@ -84,14 +84,6 @@ class _HomePageState extends State<HomePage> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   IconButton(
-                    tooltip: 'طلباتي',
-                    icon: const Icon(Icons.receipt_long),
-                    onPressed: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const OrdersPage()),
-                    ),
-                  ),
-                  IconButton(
                     tooltip: 'خروج',
                     icon: const Icon(Icons.logout),
                     onPressed: () => sb.auth.signOut(),
@@ -127,39 +119,219 @@ class _HomePageState extends State<HomePage> {
           return ListView(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
             children: [
-              const Text('عايز تشرب إيه؟',
+              const Text('عايز إيه النهاردة؟',
                   style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800)),
               const SizedBox(height: 4),
-              const Text('اطلب وانت في الطريق، وقهوتك تلاقيها جاهزة.',
+              const Text('اختار القسم، وقهوتك تلاقيها جاهزة.',
                   style: TextStyle(color: cMuted)),
               const SizedBox(height: 16),
-              for (final d in menu.drinks) DrinkTile(drink: d, addons: menu.addons),
+              GridView.count(
+                crossAxisCount: 2,
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                crossAxisSpacing: 12,
+                mainAxisSpacing: 12,
+                childAspectRatio: 1.05,
+                children: [
+                  for (final c in menuCategories)
+                    _CategoryCard(
+                      cat: c,
+                      count: menu.drinks.where((d) => d.category == c.id).length,
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => CategoryPage(cat: c, menu: menu)),
+                      ),
+                    ),
+                ],
+              ),
               const SizedBox(height: 8),
               const Center(child: VersionButton()),
             ],
           );
         },
       ),
-      bottomNavigationBar: ListenableBuilder(
-        listenable: cart,
-        builder: (context, _) {
-          if (cart.lines.isEmpty) return const SizedBox.shrink();
-          return SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: FilledButton(
-                style: FilledButton.styleFrom(
-                    minimumSize: const Size.fromHeight(56)),
-                onPressed: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const CartPage()),
-                ),
-                child: Text('كمّل الطلب  •  ${money(cart.total)}',
-                    style: const TextStyle(fontSize: 17)),
+      bottomNavigationBar: const BonnayaBar(atHome: true),
+    );
+  }
+}
+
+class MenuCategory {
+  final String id;
+  final String name;
+  final IconData icon;
+  const MenuCategory(this.id, this.name, this.icon);
+}
+
+const menuCategories = [
+  MenuCategory('snacks', 'سناكس', Icons.cookie_outlined),
+  MenuCategory('crackers', 'مقرمشات', Icons.bakery_dining_outlined),
+  MenuCategory('hot', 'مشروبات ساخنة', Icons.coffee_outlined),
+  MenuCategory('cold', 'مشروبات باردة', Icons.local_drink_outlined),
+  MenuCategory('sandwiches', 'سندوتشات', Icons.lunch_dining_outlined),
+  MenuCategory('chocolate', 'كورنر الشوكولاتة', Icons.icecream_outlined),
+];
+
+class _CategoryCard extends StatelessWidget {
+  final MenuCategory cat;
+  final int count;
+  final VoidCallback onTap;
+  const _CategoryCard(
+      {required this.cat, required this.count, required this.onTap});
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: cCream2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(22),
+        side: const BorderSide(color: cHair),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(22),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircleAvatar(
+                radius: 30,
+                backgroundColor: cCream,
+                foregroundColor: cBrand,
+                child: Icon(cat.icon, size: 32),
+              ),
+              const SizedBox(height: 10),
+              Text(cat.name,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                      fontSize: 17, fontWeight: FontWeight.w800)),
+              const SizedBox(height: 2),
+              Text('$count صنف', style: const TextStyle(color: cMuted, fontSize: 12)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class CategoryPage extends StatelessWidget {
+  final MenuCategory cat;
+  final Menu menu;
+  const CategoryPage({super.key, required this.cat, required this.menu});
+  @override
+  Widget build(BuildContext context) {
+    final items = menu.drinks.where((d) => d.category == cat.id).toList();
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(cat.name,
+            style: const TextStyle(fontWeight: FontWeight.w800)),
+      ),
+      body: items.isEmpty
+          ? const Center(
+              child: Text('القسم ده لسه فاضي، قريب هنضيف فيه.',
+                  style: TextStyle(color: cMuted)))
+          : ListView(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+              children: [
+                for (final d in items) DrinkTile(drink: d, addons: menu.addons),
+              ],
+            ),
+      bottomNavigationBar: const BonnayaBar(atHome: false),
+    );
+  }
+}
+
+/// Bottom bar: cart on one side, home shortcut in the middle (with a back
+/// arrow once the customer has gone into a section), orders/login on the other.
+class BonnayaBar extends StatelessWidget {
+  final bool atHome;
+  const BonnayaBar({super.key, required this.atHome});
+
+  void _home(BuildContext context) =>
+      Navigator.of(context).popUntil((r) => r.isFirst);
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Container(
+        height: 68,
+        decoration: const BoxDecoration(
+          color: cCream2,
+          border: Border(top: BorderSide(color: cHair)),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: ListenableBuilder(
+                listenable: cart,
+                builder: (context, _) {
+                  final n = cart.lines.fold<int>(0, (s, l) => s + l.qty);
+                  return InkWell(
+                    onTap: () => Navigator.push(context,
+                        MaterialPageRoute(builder: (_) => const CartPage())),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Badge(
+                          isLabelVisible: n > 0,
+                          label: Text('$n'),
+                          child: const Icon(Icons.shopping_cart_outlined, size: 28),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(n > 0 ? 'السلة • ${money(cart.total)}' : 'السلة',
+                            style: const TextStyle(fontSize: 12)),
+                      ],
+                    ),
+                  );
+                },
               ),
             ),
-          );
-        },
+            Expanded(
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  if (!atHome)
+                    IconButton.outlined(
+                      tooltip: 'رجوع',
+                      icon: const Icon(Icons.arrow_back),
+                      onPressed: () => Navigator.maybePop(context),
+                    ),
+                  const SizedBox(width: 6),
+                  IconButton.filled(
+                    tooltip: 'الرئيسية',
+                    iconSize: 30,
+                    icon: const Icon(Icons.home_rounded),
+                    onPressed: atHome ? null : () => _home(context),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: StreamBuilder<AuthState>(
+                stream: sb.auth.onAuthStateChange,
+                builder: (context, _) {
+                  final signed = sb.auth.currentSession != null;
+                  return InkWell(
+                    onTap: () => signed
+                        ? Navigator.push(context,
+                            MaterialPageRoute(builder: (_) => const OrdersPage()))
+                        : ensureSignedIn(context),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(signed ? Icons.receipt_long : Icons.login, size: 28),
+                        const SizedBox(height: 2),
+                        Text(signed ? 'طلباتي' : 'دخول',
+                            style: const TextStyle(fontSize: 12)),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -203,7 +375,7 @@ class DrinkTile extends StatelessWidget {
           ),
           title: Text(drink.name,
               style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
-          subtitle: Text('من ${money(drink.minPrice)}',
+          subtitle: Text(drink.hasOptions ? 'من ${money(drink.minPrice)}' : money(drink.minPrice),
               style: const TextStyle(
                   color: cBrand, fontWeight: FontWeight.w700, fontSize: 15)),
           trailing: IconButton.filled(
@@ -253,22 +425,31 @@ class _DrinkSheetState extends State<DrinkSheet> {
           children: [
             Text(widget.drink.name,
                 style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800)),
-            const SectionLabel('الحجم'),
-            Choices<String>(
-              values: sizes,
-              selected: size,
-              label: (s) => '${sizeLabel[s]}  ${money(widget.drink.prices[s]!)}',
-              onChanged: (v) => setState(() => size = v),
-            ),
-            const SectionLabel('السكر'),
-            Choices<String>(
-              values: sugarKeys,
-              selected: sugar,
-              label: (s) => sugarLabel[s]!,
-              onChanged: (v) => setState(() => sugar = v),
-            ),
-            if (widget.addons.isNotEmpty) const SectionLabel('إضافات'),
-            Wrap(
+            if (!widget.drink.hasOptions)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(money(widget.drink.minPrice),
+                    style: const TextStyle(
+                        color: cBrand, fontSize: 20, fontWeight: FontWeight.w700)),
+              ),
+            if (widget.drink.hasOptions) ...[
+              const SectionLabel('الحجم'),
+              Choices<String>(
+                values: sizes,
+                selected: size,
+                label: (s) => '${sizeLabel[s]}  ${money(widget.drink.prices[s]!)}',
+                onChanged: (v) => setState(() => size = v),
+              ),
+              const SectionLabel('السكر'),
+              Choices<String>(
+                values: sugarKeys,
+                selected: sugar,
+                label: (s) => sugarLabel[s]!,
+                onChanged: (v) => setState(() => sugar = v),
+              ),
+              if (widget.addons.isNotEmpty) const SectionLabel('إضافات'),
+            ],
+            if (widget.drink.hasOptions) Wrap(
               spacing: 8,
               runSpacing: 8,
               children: [
@@ -412,7 +593,14 @@ class _CartPageState extends State<CartPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('طلبك')),
+      appBar: AppBar(
+        leading: IconButton(
+          tooltip: 'رجوع للرئيسية',
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.of(context).popUntil((r) => r.isFirst),
+        ),
+        title: const Text('طلبك'),
+      ),
       body: ListenableBuilder(
         listenable: cart,
         builder: (context, _) {
@@ -487,10 +675,7 @@ class _CartPageState extends State<CartPage> {
 
   Widget _line(int i) {
     final l = cart.lines[i];
-    final notes = [
-      sugarDesc[l.sugar] ?? '',
-      for (final a in l.addons) '+ ${a.name}',
-    ].join(' · ');
+    final notes = l.notes;
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
@@ -499,10 +684,10 @@ class _CartPageState extends State<CartPage> {
         border: Border.all(color: cHair),
       ),
       child: ListTile(
-        title: Text('${l.drink.name} ${sizeLabel[l.size]} × ${l.qty}',
+        title: Text(l.title,
             style: const TextStyle(fontWeight: FontWeight.w700)),
-        subtitle: Text('$notes\n${money(l.total)}'),
-        isThreeLine: true,
+        subtitle: Text(notes.isEmpty ? money(l.total) : '$notes\n${money(l.total)}'),
+        isThreeLine: notes.isNotEmpty,
         trailing: IconButton(
           tooltip: 'شيل',
           icon: const Icon(Icons.delete_outline),
@@ -559,7 +744,7 @@ class _TrackPageState extends State<TrackPage> {
       final r = await sb
           .from('orders')
           .select(
-              '*, order_items(*, drinks(name), order_item_addons(*, addons(name)))')
+              '*, order_items(*, drinks(name, drink_prices(size)), order_item_addons(*, addons(name)))')
           .eq('id', widget.orderId)
           .single();
       if (mounted) {

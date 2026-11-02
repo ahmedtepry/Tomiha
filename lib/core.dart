@@ -325,14 +325,18 @@ class Drink {
   final String id;
   final String name;
   final Map<String, double> prices;
-  Drink(this.id, this.name, this.prices);
+  final String category;
+  Drink(this.id, this.name, this.prices, [this.category = 'hot']);
+  /// Drinks come in sizes with sugar choices; snacks and sandwiches are a single item.
+  bool get hasOptions => prices.length > 1;
   factory Drink.from(Map<String, dynamic> m) {
     final prices = <String, double>{};
     for (final p in (m['drink_prices'] as List)) {
       final row = p as Map<String, dynamic>;
       prices[row['size'] as String] = (row['price'] as num).toDouble();
     }
-    return Drink(m['id'] as String, m['name'] as String, prices);
+    return Drink(m['id'] as String, m['name'] as String, prices,
+        (m['category'] as String?) ?? 'hot');
   }
   double get minPrice =>
       prices.isEmpty ? 0 : prices.values.reduce((a, b) => a < b ? a : b);
@@ -347,7 +351,7 @@ class Menu {
 Future<Menu> loadMenu() async {
   final d = await sb
       .from('drinks')
-      .select('id, name, drink_prices(size, price)')
+      .select('id, name, category, drink_prices(size, price)')
       .eq('active', true)
       .order('sort_order');
   final a = await sb
@@ -374,6 +378,14 @@ class CartLine {
     required this.qty,
     required this.addons,
   });
+
+  String get title => drink.hasOptions
+      ? '${drink.name} ${sizeLabel[size] ?? ''} × $qty'
+      : '${drink.name} × $qty';
+  String get notes => [
+        if (drink.hasOptions) sugarDesc[sugar] ?? '',
+        for (final a in addons) '+ ${a.name}',
+      ].join(' · ');
 
   double get unit => drink.prices[size] ?? 0;
   double get total =>
@@ -412,11 +424,18 @@ final cart = Cart();
 // Text helpers for orders fetched with embedded order_items.
 String itemTitle(Map<String, dynamic> it) {
   final drink = it['drinks'] as Map<String, dynamic>;
-  return '${drink['name']} ${sizeLabel[it['size']] ?? ''} × ${it['qty']}';
+  final multi = ((drink['drink_prices'] as List?)?.length ?? 2) > 1;
+  return multi
+      ? '${drink['name']} ${sizeLabel[it['size']] ?? ''} × ${it['qty']}'
+      : '${drink['name']} × ${it['qty']}';
 }
 
 String itemNotes(Map<String, dynamic> it) {
-  final parts = <String>[sugarDesc[it['sugar']] ?? ''];
+  final multi =
+      (((it['drinks'] as Map<String, dynamic>)['drink_prices'] as List?)?.length ??
+              2) >
+          1;
+  final parts = <String>[if (multi) sugarDesc[it['sugar']] ?? ''];
   for (final a in (it['order_item_addons'] as List)) {
     final row = a as Map<String, dynamic>;
     final addon = row['addons'] as Map<String, dynamic>;
