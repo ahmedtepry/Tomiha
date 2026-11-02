@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart' show AuthState;
 import 'core.dart';
 import 'welcome.dart';
 import 'update.dart';
+import 'avatars.dart';
 
 class CustomerApp extends StatelessWidget {
   const CustomerApp({super.key});
@@ -90,30 +91,7 @@ class _HomePageState extends State<HomePage> {
       appBar: AppBar(
         title: const Text('BONNAYA',
             style: TextStyle(fontWeight: FontWeight.w800, fontSize: 26)),
-        actions: [
-          StreamBuilder<AuthState>(
-            stream: sb.auth.onAuthStateChange,
-            builder: (context, _) {
-              if (sb.auth.currentSession == null) {
-                return TextButton.icon(
-                  icon: const Icon(Icons.login),
-                  label: const Text('دخول'),
-                  onPressed: () => ensureSignedIn(context),
-                );
-              }
-              return Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  IconButton(
-                    tooltip: 'خروج',
-                    icon: const Icon(Icons.logout),
-                    onPressed: () => sb.auth.signOut(),
-                  ),
-                ],
-              );
-            },
-          ),
-        ],
+        actions: const [AccountButton(), SizedBox(width: 6)],
       ),
       body: FutureBuilder<Menu>(
         future: _menu,

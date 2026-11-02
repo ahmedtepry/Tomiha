@@ -624,6 +624,7 @@ class _AuthPageState extends State<AuthPage> {
   final _pass = TextEditingController();
   final _name = TextEditingController();
   bool _signUp = false;
+  String _gender = 'm';
   bool _busy = false;
   bool _retryWhenOnline = false;
 
@@ -663,7 +664,13 @@ class _AuthPageState extends State<AuthPage> {
           await sb.auth.signUp(
             email: email,
             password: _pass.text,
-            data: {'full_name': _name.text.trim()},
+            data: {
+              'full_name': _name.text.trim(),
+              'gender': _gender,
+              // A random coffee avatar for their gender; they can change it later.
+              'avatar':
+                  '${_gender}${1 + Random().nextInt(4)}',
+            },
           );
         } on AuthException catch (e) {
           // A retry after a dropped connection may find the account already created.
@@ -708,6 +715,17 @@ class _AuthPageState extends State<AuthPage> {
                 TextField(
                   controller: _name,
                   decoration: const InputDecoration(labelText: 'الاسم'),
+                ),
+                const SizedBox(height: 12),
+                SegmentedButton<String>(
+                  segments: const [
+                    ButtonSegment(
+                        value: 'm', label: Text('ذكر'), icon: Icon(Icons.man)),
+                    ButtonSegment(
+                        value: 'f', label: Text('أنثى'), icon: Icon(Icons.woman)),
+                  ],
+                  selected: {_gender},
+                  onSelectionChanged: (v) => setState(() => _gender = v.first),
                 ),
                 const SizedBox(height: 12),
               ],
