@@ -185,3 +185,5 @@ end;
 $$;
 revoke execute on function public.owner_report(date, date) from public, anon;
 grant execute on function public.owner_report(date, date) to authenticated;
+
+-- (Applied as a restrictive-policy migration instead of dropping the old staff policies.)
