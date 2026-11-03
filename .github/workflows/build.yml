@@ -79,6 +79,8 @@ jobs:
           rm -rf lib && cp -r /tmp/lib_backup lib
           cp /tmp/pubspec_backup.yaml pubspec.yaml
           rm -rf test
+      - name: Bundle the receipt font (offline printing)
+        run: curl -L --fail -o assets/fonts/Cairo.ttf "https://github.com/google/fonts/raw/main/ofl/cairo/Cairo%5Bslnt%2Cwght%5D.ttf" || true
       - name: Set window title
         run: sed -i 's/L"bonnaya"/L"BONNAYA Cashier"/' windows/runner/main.cpp
       - run: flutter pub get

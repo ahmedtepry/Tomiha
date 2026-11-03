@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'offline.dart';
 import 'dart:io';
 import 'dart:math';
 
@@ -456,6 +457,7 @@ Future<Menu> loadMenu() async {
       .select('id, name, kind, price')
       .eq('active', true)
       .order('price');
+  saveMenuCache(d, a);
   return Menu(
     d.map((e) => Drink.from(e)).toList(),
     a.map((e) => Addon.from(e)).toList(),

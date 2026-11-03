@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -7,6 +8,8 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
 import 'core.dart';
+import 'offline.dart';
+import 'devprefs.dart';
 import 'amana.dart';
 import 'update.dart';
 import 'appearance.dart';
@@ -222,6 +225,13 @@ class _OpenShiftPageState extends State<OpenShiftPage> {
       // Opening a shift needs the employee's own password again.
       await sb.auth.signInWithPassword(
           email: sb.auth.currentUser!.email!, password: _pass.text);
+      if (!await confirmPresence('أكّد بصمتك عشان تفتح الوردية')) {
+        if (mounted) {
+          setState(() => _busy = false);
+          showError(context, 'مقدرناش نتأكد من البصمة. جرّب تاني.');
+        }
+        return;
+      }
       await sb.from('shifts').insert({
         'cashier_id': sb.auth.currentUser!.id,
         'opening_cash': double.tryParse(_cash.text.trim()) ?? 0,
@@ -245,6 +255,11 @@ class _OpenShiftPageState extends State<OpenShiftPage> {
       appBar: AppBar(
         title: const Text('BONNAYA • كاشير'),
         actions: [
+          IconButton(
+            tooltip: 'الطابعة والبصمة',
+            icon: const Icon(Icons.settings_outlined),
+            onPressed: () => showDeviceSettings(context),
+          ),
           IconButton(
             tooltip: 'خروج',
             icon: const Icon(Icons.logout),
@@ -960,25 +975,33 @@ class _PosPanelState extends State<PosPanel> {
       return;
     }
     setState(() => busy = true);
+    final ref = newRequestId();
+    final sale = <String, dynamic>{
+      'ref': ref,
+      'items': ticket.map((l) => l.toJson()).toList(),
+      'payment': pay,
+      'seller': activeSellerId,
+      'discount': discount,
+      'reason': discountReason.isEmpty ? null : discountReason,
+      'note': note.isEmpty ? null : note,
+      'at': DateTime.now().toUtc().toIso8601String(),
+      'total': _ticketTotal - discount,
+      'label': fmtTime(DateTime.now().toUtc().toIso8601String()),
+    };
+    final localOrder = _localOrder(sale);
     try {
-      final res = await sb.rpc('place_order', params: {
-        'p_items': ticket.map((l) => l.toJson()).toList(),
+      if (!net.online) throw const SocketException('offline');
+      final res = await sb.rpc('pos_sale', params: {
+        'p_ref': ref,
+        'p_items': sale['items'],
         'p_payment': pay,
-        'p_source': 'pos',
-      });
+        'p_seller': activeSellerId,
+        'p_discount': discount,
+        'p_reason': sale['reason'],
+        'p_note': sale['note'],
+        'p_at': null,
+      }).timeout(const Duration(seconds: 15));
       final id = res as String;
-      String? warn;
-      try {
-        await sb.rpc('pos_finalize', params: {
-          'p_order': id,
-          'p_seller': activeSellerId,
-          'p_discount': discount,
-          'p_reason': discountReason.isEmpty ? null : discountReason,
-          'p_note': note.isEmpty ? null : note,
-        });
-      } catch (e) {
-        warn = errorText(e);
-      }
       final order =
           await sb.from('orders').select(_orderSelect).eq('id', id).single();
       if (!mounted) return;
@@ -990,30 +1013,72 @@ class _PosPanelState extends State<PosPanel> {
         busy = false;
         _menu = _fetchMenu();
       });
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(warn == null
-              ? 'تم البيع. طلب رقم ${order['order_no']}'
-              : 'تم البيع (طلب ${order['order_no']}) لكن: $warn')));
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('تم البيع. طلب رقم ${order['order_no']}')));
       try {
         await printReceipt(order);
       } catch (e) {
         if (mounted) showError(context, e);
       }
     } catch (e) {
-      if (mounted) {
+      if (!mounted) return;
+      if (isNetworkError(e)) {
+        // No internet: keep the sale on this device, print it, and let it
+        // reach the server by itself when the connection is back.
+        net.markOffline();
+        await pendingSales.add(sale);
+        if (!mounted) return;
+        final paidNow = _ticketTotal - discount;
+        setState(() {
+          if (pay == 'cash') cashTotal += paidNow;
+          if (pay == 'visa') visaTotal += paidNow;
+          _resetSale();
+          busy = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('مفيش نت • الفاتورة اتحفظت على الجهاز وهتتبعت لوحدها.'),
+          duration: Duration(seconds: 5),
+        ));
+        try {
+          await printReceipt(localOrder);
+        } catch (_) {}
+      } else {
         setState(() => busy = false);
-        if (isNetworkError(e)) {
-          net.markOffline();
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text(
-                'انقطع الاتصال والفاتورة لسه متسجّلتش. الفاتورة محفوظة قدامك، ادفع تاني لما النت يرجع. ولو مش متأكد إنها اتسجّلت، راجع تقرير الوردية الأول.'),
-            duration: Duration(seconds: 8),
-          ));
-        } else {
-          showError(context, e);
-        }
+        showError(context, e);
       }
     }
+  }
+
+  /// A receipt-shaped copy of a sale that has not reached the server yet.
+  Map<String, dynamic> _localOrder(Map<String, dynamic> sale) {
+    final lines = ticket.toList();
+    return {
+      'order_no': 'أوفلاين',
+      'invoice_no': null,
+      'created_at': DateTime.now().toUtc().toIso8601String(),
+      'total': sale['total'],
+      'discount': sale['discount'],
+      'discount_reason': sale['reason'],
+      'note': sale['note'],
+      'payment_method': sale['payment'],
+      'order_items': [
+        for (final l in lines)
+          {
+            'size': l.size,
+            'sugar': l.sugar,
+            'qty': l.qty,
+            'unit_price': l.unit,
+            'drinks': {
+              'name': l.drink.name,
+              'is_coffee': l.drink.isCoffee,
+              'drink_prices': [for (final k in l.drink.prices.keys) {'size': k}],
+            },
+            'order_item_addons': [
+              for (final a in l.addons) {'price': a.price, 'addons': {'name': a.name}}
+            ],
+          }
+      ],
+    };
   }
 
   bool _menuFailed = false;
@@ -1025,7 +1090,11 @@ class _PosPanelState extends State<PosPanel> {
       return m;
     } catch (e) {
       _menuFailed = true;
-      if (isNetworkError(e)) net.markOffline();
+      if (isNetworkError(e)) {
+        net.markOffline();
+        final cached = await loadMenuCache();
+        if (cached != null) return cached;
+      }
       rethrow;
     }
   }
@@ -1115,6 +1184,7 @@ class _PosPanelState extends State<PosPanel> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            const PendingBanner(),
             _topBar(),
             const Divider(height: 1, color: cHair),
             Expanded(
@@ -1192,7 +1262,12 @@ class _PosPanelState extends State<PosPanel> {
               }
             },
           ),
-          const SizedBox(width: 12),
+          IconButton(
+            tooltip: 'الطابعة والبصمة',
+            icon: const Icon(Icons.print_outlined),
+            onPressed: () => showDeviceSettings(context),
+          ),
+          const SizedBox(width: 8),
           _total('كاش', cashTotal, Icons.payments_outlined),
           const SizedBox(width: 10),
           _total('فيزا', visaTotal, Icons.credit_card),
@@ -1872,6 +1947,11 @@ class _ShiftDialogState extends State<ShiftDialog> {
   }
 
   Future<void> _close() async {
+    if (pendingSales.count > 0) {
+      showError(context,
+          'فيه ${pendingSales.count} فاتورة لسه متبعتتش للسيرفر. استنى النت يرجع وتتبعت، وبعدها اقفل الوردية.');
+      return;
+    }
     final actual = double.tryParse(_actual.text.trim());
     if (actual == null) {
       showError(context, 'اكتب الكاش الفعلي اللي في الدرج.');
@@ -1997,8 +2077,7 @@ class _ShiftDialogState extends State<ShiftDialog> {
 // ---------------------------------------------------------------- receipt
 
 Future<void> printReceipt(Map<String, dynamic> order) async {
-  final regular = await PdfGoogleFonts.cairoRegular();
-  final bold = await PdfGoogleFonts.cairoBold();
+  final (regular, bold) = await receiptFonts();
   pw.Widget t(String s, {bool b = false, double size = 10}) => pw.Text(
         s,
         textDirection: pw.TextDirection.rtl,
@@ -2061,8 +2140,5 @@ Future<void> printReceipt(Map<String, dynamic> order) async {
       ),
     ),
   );
-  await Printing.layoutPdf(
-    name: 'bonnaya-${order['order_no']}',
-    onLayout: (format) async => doc.save(),
-  );
+  await printDoc('bonnaya-${order['order_no']}', doc);
 }

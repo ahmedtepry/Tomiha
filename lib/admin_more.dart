@@ -362,8 +362,7 @@ class _PayrollSectionState extends State<_PayrollSection> {
 
   Future<void> _payslip(Map r) async {
     try {
-      final regular = await PdfGoogleFonts.cairoRegular();
-      final bold = await PdfGoogleFonts.cairoBold();
+      final (regular, bold) = await receiptFonts();
       pw.Widget t(String s, {bool b = false, double size = 13}) => pw.Text(s,
           textDirection: pw.TextDirection.rtl,
           style: pw.TextStyle(font: b ? bold : regular, fontSize: size));

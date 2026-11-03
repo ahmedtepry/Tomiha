@@ -12,6 +12,7 @@ import 'appearance.dart';
 import 'cashier.dart';
 import 'core.dart';
 import 'ops.dart';
+import 'devprefs.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'update.dart';
 
