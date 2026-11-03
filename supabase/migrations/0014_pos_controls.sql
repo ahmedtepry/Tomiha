@@ -332,3 +332,7 @@ begin
     order by 3 desc limit 200) x), '[]'::jsonb);
 end;
 $function$;
+
+-- anon must not call staff functions
+revoke execute on function public.cancel_order(uuid, text), public.customer_cancel_order(uuid), public.owner_customers(), public.pos_finalize(uuid, uuid, numeric, text, text), public.set_order_seller(uuid, uuid), public.set_sold_out(uuid, boolean), public.is_supervisor() from anon, public;
+grant execute on function public.cancel_order(uuid, text), public.customer_cancel_order(uuid), public.owner_customers(), public.pos_finalize(uuid, uuid, numeric, text, text), public.set_order_seller(uuid, uuid), public.set_sold_out(uuid, boolean), public.is_supervisor() to authenticated;
