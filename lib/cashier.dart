@@ -7,6 +7,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
 import 'core.dart';
+import 'amana.dart';
 import 'update.dart';
 import 'appearance.dart';
 import 'delivery.dart';
@@ -20,6 +21,9 @@ const _orderSelect =
 Map<String, dynamic> myStaff = {};
 /// Result of today's check-in, shown once after opening the shift.
 Map<String, dynamic>? pendingWelcome;
+/// The seller shown on the sell screen (switchable without a password).
+String? activeSellerId;
+String? activeSellerName;
 
 bool get isOwner => myStaff['role'] == 'manager';
 
@@ -104,10 +108,47 @@ class _CashierGateState extends State<CashierGate> {
     if (net.online && _lastFailed && mounted) _reload();
   }
 
+  Future<void> _loadTotals() async {
+    try {
+      final rows = await sb
+          .from('orders')
+          .select('total, payment_method')
+          .eq('shift_id', widget.shiftId)
+          .eq('payment_status', 'paid')
+          .neq('status', 'cancelled');
+      var c = 0.0, v = 0.0;
+      for (final r in rows) {
+        final t = (r['total'] as num?)?.toDouble() ?? 0;
+        if (r['payment_method'] == 'cash') c += t;
+        if (r['payment_method'] == 'visa') v += t;
+      }
+      if (mounted) setState(() {
+        cashTotal = c;
+        visaTotal = v;
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _pickSeller() async {
+    final picked = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (_) => const _SellerDialog(),
+    );
+    if (picked != null && mounted) {
+      setState(() {
+        activeSellerId = picked['id'] as String;
+        activeSellerName = picked['full_name'] as String? ?? '';
+      });
+    }
+  }
+
   @override
   void initState() {
     super.initState();
+    activeSellerId ??= sb.auth.currentUser?.id;
+    activeSellerName ??= (myStaff['full_name'] as String?) ?? 'البائع';
     net.addListener(_onNet);
+    _loadTotals();
   }
 
   @override
@@ -262,9 +303,6 @@ class _OpenShiftPageState extends State<OpenShiftPage> {
                       : 'أهلاً بيك',
                   style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w800)),
               const SizedBox(height: 4),
-              if (myStaff['employee_no'] != null)
-                Text('رقمك الوظيفي ${myStaff['employee_no']}',
-                    style: const TextStyle(color: cBrand, fontWeight: FontWeight.w700)),
               const SizedBox(height: 8),
               const Text('اكتب الكاش اللي في الدرج وكلمة السر عشان نفتح الوردية.',
                   style: TextStyle(color: cMuted)),
@@ -319,6 +357,8 @@ class _CashierHomeState extends State<CashierHome> {
 
   Future<void> _welcome() async {
     if (!mounted) return;
+    await showAmana(context);
+    if (!mounted) return;
     final name = (myStaff['full_name'] as String?)?.trim();
     final who = (name == null || name.isEmpty) ? '' : ' يا $name';
     final w = pendingWelcome;
@@ -349,7 +389,7 @@ class _CashierHomeState extends State<CashierHome> {
         icon: Icon(icon, color: cBrand, size: 40),
         title: Text('أهلاً بيك$who'),
         content: Text(
-            '${w['employee_no'] != null ? 'رقمك الوظيفي ${w['employee_no']}\n' : ''}$msg'),
+            msg),
         actions: [
           FilledButton(
               onPressed: () => Navigator.pop(ctx), child: const Text('يلا نشتغل')),
@@ -406,7 +446,7 @@ class _CashierHomeState extends State<CashierHome> {
         ],
       ),
       body: widget.mode == 'sell'
-          ? const PosPanel()
+          ? PosPanel(shiftId: shift['id'] as String)
           : widget.mode == 'online'
               ? Center(
                   child: ConstrainedBox(
@@ -417,7 +457,7 @@ class _CashierHomeState extends State<CashierHome> {
                   children: [
                     const SizedBox(width: 440, child: OnlineOrdersPanel()),
                     const VerticalDivider(width: 1, color: cHair),
-                    const Expanded(child: PosPanel()),
+                    Expanded(child: PosPanel(shiftId: shift['id'] as String)),
                   ],
                 ),
     );
@@ -768,7 +808,8 @@ class _OnlineOrdersPanelState extends State<OnlineOrdersPanel> {
 // ---------------------------------------------------------------- direct sale
 
 class PosPanel extends StatefulWidget {
-  const PosPanel({super.key});
+  final String shiftId;
+  const PosPanel({super.key, required this.shiftId});
   @override
   State<PosPanel> createState() => _PosPanelState();
 }
@@ -776,6 +817,8 @@ class PosPanel extends StatefulWidget {
 class _PosPanelState extends State<PosPanel> {
   late Future<Menu> _menu = _fetchMenu();
   String cat = 'all';
+  double cashTotal = 0;
+  double visaTotal = 0;
   final List<CartLine> ticket = [];
   String pay = 'cash';
   bool busy = false;
@@ -802,8 +845,17 @@ class _PosPanelState extends State<PosPanel> {
       final id = res as String;
       final order =
           await sb.from('orders').select(_orderSelect).eq('id', id).single();
+      if (activeSellerId != null) {
+        try {
+          await sb.rpc('set_order_seller',
+              params: {'p_order': id, 'p_seller': activeSellerId});
+        } catch (_) {}
+      }
       if (!mounted) return;
+      final paidNow = (order['total'] as num?)?.toDouble() ?? _ticketTotal;
       setState(() {
+        if (pay == 'cash') cashTotal += paidNow;
+        if (pay == 'visa') visaTotal += paidNow;
         ticket.clear();
         busy = false;
       });
@@ -889,17 +941,77 @@ class _PosPanelState extends State<PosPanel> {
           );
         }
         final menu = snap.data!;
-        return Row(
+        return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            SizedBox(width: 190, child: _categories(menu)),
-            const VerticalDivider(width: 1, color: cHair),
-            Expanded(child: _selector(menu)),
-            const VerticalDivider(width: 1, color: cHair),
-            SizedBox(width: 320, child: _ticket()),
+            _topBar(),
+            const Divider(height: 1, color: cHair),
+            Expanded(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  SizedBox(width: 190, child: _categories(menu)),
+                  const VerticalDivider(width: 1, color: cHair),
+                  Expanded(child: _selector(menu)),
+                  const VerticalDivider(width: 1, color: cHair),
+                  SizedBox(width: 320, child: _ticket()),
+                ],
+              ),
+            ),
           ],
         );
       },
+    );
+  }
+
+  Widget _total(String label, double v, IconData icon) => Expanded(
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+          decoration: BoxDecoration(
+            color: cCream2,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: cHair),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 20, color: cBrand),
+              const SizedBox(width: 8),
+              Text(label,
+                  style: const TextStyle(fontWeight: FontWeight.w700)),
+              const SizedBox(width: 12),
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 350),
+                transitionBuilder: (w, a) => ScaleTransition(
+                    scale: a, child: FadeTransition(opacity: a, child: w)),
+                child: Text(money(v),
+                    key: ValueKey(v),
+                    style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w800,
+                        color: cBrand)),
+              ),
+            ],
+          ),
+        ),
+      );
+
+  Widget _topBar() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      child: Row(
+        children: [
+          OutlinedButton.icon(
+            icon: const Icon(Icons.badge_outlined),
+            label: Text('البائع: ${activeSellerName ?? ''}'),
+            onPressed: _pickSeller,
+          ),
+          const SizedBox(width: 12),
+          _total('كاش', cashTotal, Icons.payments_outlined),
+          const SizedBox(width: 10),
+          _total('فيزا', visaTotal, Icons.credit_card),
+        ],
+      ),
     );
   }
 
@@ -1049,9 +1161,9 @@ class _PosPanelState extends State<PosPanel> {
           ),
           const SizedBox(height: 8),
           Choices<String>(
-            values: const ['cash', 'wallet'],
+            values: const ['cash', 'visa', 'wallet'],
             selected: pay,
-            label: (p) => p == 'cash' ? 'كاش' : 'محفظة',
+            label: (p) => p == 'cash' ? 'كاش' : (p == 'visa' ? 'فيزا' : 'محفظة'),
             onChanged: (v) => setState(() => pay = v),
           ),
           const SizedBox(height: 12),
@@ -1201,6 +1313,69 @@ class _ItemDialogState extends State<_ItemDialog> {
   }
 }
 
+/// Pick who is selling right now. No password: just choose a name.
+class _SellerDialog extends StatefulWidget {
+  const _SellerDialog();
+  @override
+  State<_SellerDialog> createState() => _SellerDialogState();
+}
+
+class _SellerDialogState extends State<_SellerDialog> {
+  late final Future<List<Map<String, dynamic>>> _f = _load();
+
+  Future<List<Map<String, dynamic>>> _load() async {
+    final rows = await sb
+        .from('profiles')
+        .select('id, full_name, staff_role')
+        .not('staff_role', 'is', null)
+        .eq('active', true)
+        .order('full_name');
+    return rows.cast<Map<String, dynamic>>();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('مين البائع دلوقتي؟'),
+      content: SizedBox(
+        width: 360,
+        child: FutureBuilder<List<Map<String, dynamic>>>(
+          future: _f,
+          builder: (context, snap) {
+            if (snap.connectionState != ConnectionState.done) {
+              return const SizedBox(
+                  height: 80, child: Center(child: CircularProgressIndicator()));
+            }
+            final list = snap.data ?? [];
+            if (list.isEmpty) {
+              return const Text('مفيش موظفين متسجلين لسه.');
+            }
+            return ListView(
+              shrinkWrap: true,
+              children: [
+                for (final p in list)
+                  ListTile(
+                    leading: const Icon(Icons.person_outline),
+                    title: Text((p['full_name'] as String?)?.trim().isNotEmpty == true
+                        ? p['full_name'] as String
+                        : 'بدون اسم'),
+                    subtitle: Text(jobLabels[p['staff_role']] ?? ''),
+                    selected: p['id'] == activeSellerId,
+                    onTap: () => Navigator.pop(context, p),
+                  ),
+              ],
+            );
+          },
+        ),
+      ),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
+      ],
+    );
+  }
+}
+
 // ---------------------------------------------------------------- shift report
 
 class ShiftDialog extends StatefulWidget {
@@ -1217,6 +1392,14 @@ class _ShiftDialogState extends State<ShiftDialog> {
   final _actual = TextEditingController();
   final _note = TextEditingController();
   bool busy = false;
+  static const _closing = [
+    'عدّ الكاش اللي في الدرج واكتبه تحت.',
+    'راجع إيصالات الفيزا مع مبلغ مبيعات الفيزا فوق.',
+    'نضّف العربية والمكنة والأسطح.',
+    'اقفل الغاز والكهربا وأي جهاز شغال.',
+    'سلّم الدرج والمفاتيح، وسجّل أي نقص في الملاحظة.',
+  ];
+  final List<bool> _done = List.filled(5, false);
 
   @override
   void initState() {
@@ -1257,7 +1440,8 @@ class _ShiftDialogState extends State<ShiftDialog> {
           title: const Text('اتقفلت الوردية'),
           content: Text(
               'الفرق بين الكاش المتوقع والفعلي: ${money(diff)}\n'
-              '${diff == 0 ? 'الكاش مظبوط.' : (diff > 0 ? 'زيادة في الدرج.' : 'عجز في الدرج.')}'),
+              '${diff == 0 ? 'الكاش مظبوط.' : (diff > 0 ? 'زيادة في الدرج.' : 'عجز في الدرج.')}\n\n'
+              'تسلم إيدك النهاردة. ربنا يبارك لك في رزقك وتروح بالسلامة.'),
           actions: [
             TextButton(
                 onPressed: () => Navigator.pop(ctx), child: const Text('تمام')),
@@ -1301,6 +1485,7 @@ class _ShiftDialogState extends State<ShiftDialog> {
                       children: [
                         _row('كاش بداية الوردية', money(r['opening_cash'] as num)),
                         _row('مبيعات كاش', money(r['cash_sales'] as num)),
+                        _row('مبيعات فيزا', money((r['visa_sales'] ?? 0) as num)),
                         _row('مبيعات محفظة', money(r['wallet_sales'] as num)),
                         _row('الكاش المتوقع في الدرج', money(r['expected_cash'] as num)),
                         _row('عدد الأكواب', '${r['cups']}'),
@@ -1308,6 +1493,19 @@ class _ShiftDialogState extends State<ShiftDialog> {
                         const Divider(color: cHair),
                         for (final x in (r['by_drink'] as List))
                           _row('${(x as Map)['name']}', '${x['cups']}'),
+                        const Divider(color: cHair),
+                        const Text('قبل ما تقفل',
+                            style: TextStyle(
+                                fontWeight: FontWeight.w800, color: cBrand)),
+                        for (var i = 0; i < _closing.length; i++)
+                          CheckboxListTile(
+                            dense: true,
+                            contentPadding: EdgeInsets.zero,
+                            controlAffinity: ListTileControlAffinity.leading,
+                            title: Text(_closing[i]),
+                            value: _done[i],
+                            onChanged: (v) => setState(() => _done[i] = v ?? false),
+                          ),
                         const Divider(color: cHair),
                         TextField(
                           controller: _actual,
@@ -1390,7 +1588,7 @@ Future<void> printReceipt(Map<String, dynamic> order) async {
             ],
           ),
           pw.SizedBox(height: 4),
-          t(isCash ? 'الدفع: كاش' : 'الدفع: محفظة إلكترونية'),
+          t(isCash ? 'الدفع: كاش' : (order['payment_method'] == 'visa' ? 'الدفع: فيزا' : 'الدفع: محفظة إلكترونية')),
           pw.SizedBox(height: 8),
           pw.Center(child: t('شكرًا لزيارتك بنايه', size: 9)),
         ],
