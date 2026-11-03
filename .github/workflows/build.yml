@@ -90,7 +90,7 @@ jobs:
           dart run flutter_launcher_icons -f icons_windows.yaml
       - name: Build Windows
         env:
-          CXXFLAGS: /D_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS
+          CXXFLAGS: -D_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS
         run: flutter build windows --release -t lib/main_cashier.dart --build-number=${{ github.run_number }}
       - name: Zip the app
         shell: pwsh
