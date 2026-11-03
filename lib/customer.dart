@@ -371,6 +371,11 @@ class BonnayaBar extends StatelessWidget {
 }
 
 void openDrinkSheet(BuildContext context, Drink drink, List<Addon> addons) {
+  if (!drink.available) {
+    ScaffoldMessenger.of(context)
+        .showSnackBar(const SnackBar(content: Text('الصنف ده خلص دلوقتي.')));
+    return;
+  }
   showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
@@ -415,9 +420,10 @@ class _PopularCard extends StatelessWidget {
                       style: const TextStyle(
                           fontSize: 13, fontWeight: FontWeight.w700)),
                   const SizedBox(height: 4),
-                  Text(money(drink.minPrice),
-                      style: const TextStyle(
-                          color: cBrand, fontWeight: FontWeight.w800)),
+                  Text(drink.available ? money(drink.minPrice) : 'خلص',
+                      style: TextStyle(
+                          color: drink.available ? cBrand : cMuted,
+                          fontWeight: FontWeight.w800)),
                 ],
               ),
             ),
@@ -434,6 +440,11 @@ class DrinkTile extends StatelessWidget {
   const DrinkTile({super.key, required this.drink, required this.addons});
 
   void _open(BuildContext context) {
+    if (!drink.available) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('الصنف ده خلص دلوقتي.')));
+      return;
+    }
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -466,7 +477,7 @@ class DrinkTile extends StatelessWidget {
           ),
           title: Text(drink.name,
               style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
-          subtitle: Text(drink.hasOptions ? 'من ${money(drink.minPrice)}' : money(drink.minPrice),
+          subtitle: Text(!drink.available ? 'خلص دلوقتي' : (drink.hasOptions ? 'من ${money(drink.minPrice)}' : money(drink.minPrice)),
               style: const TextStyle(
                   color: cBrand, fontWeight: FontWeight.w700, fontSize: 15)),
           trailing: IconButton.filled(
@@ -1063,6 +1074,40 @@ class _TrackPageState extends State<TrackPage> {
             ],
           ),
         ),
+        if (status == 'pending_payment')
+          Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: OutlinedButton.icon(
+              icon: const Icon(Icons.close),
+              label: const Text('إلغاء الأوردر'),
+              onPressed: () async {
+                final ok = await showDialog<bool>(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    title: const Text('تلغي الأوردر؟'),
+                    content: const Text(
+                        'لو حوّلت الفلوس قبل كده، كلّم بنايه عشان نرجّعهالك.'),
+                    actions: [
+                      TextButton(
+                          onPressed: () => Navigator.pop(ctx, false),
+                          child: const Text('لأ')),
+                      FilledButton(
+                          onPressed: () => Navigator.pop(ctx, true),
+                          child: const Text('إلغاء الأوردر')),
+                    ],
+                  ),
+                );
+                if (ok != true) return;
+                try {
+                  await sb.rpc('customer_cancel_order',
+                      params: {'p_order': o['id']});
+                  _load();
+                } catch (e) {
+                  if (mounted) showError(context, e);
+                }
+              },
+            ),
+          ),
         if (status != 'cancelled') ...[
           const SizedBox(height: 20),
           _step('بانتظار تأكيد التحويل', 0, idx),

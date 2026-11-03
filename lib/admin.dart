@@ -1,4 +1,8 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:open_filex/open_filex.dart';
+import 'package:path_provider/path_provider.dart';
 
 import 'appearance.dart';
 import 'cashier.dart';
@@ -12,6 +16,7 @@ const jobLabels = {
   'barista': 'باريستا',
   'delivery': 'ديليفري',
   'reception': 'استقبال أونلاين',
+  'manager': 'مدير',
 };
 
 Map<String, String> get _catNames => {for (final c in menuCategories) c.id: c.name};
@@ -103,30 +108,40 @@ class AdminDashboard extends StatefulWidget {
 
 class _AdminDashboardState extends State<AdminDashboard> {
   int _i = 0;
-  static const _items = [
-    ('نظرة عامة', Icons.dashboard_outlined),
-    ('المنتجات', Icons.local_cafe_outlined),
-    ('الموظفين', Icons.groups_outlined),
-    ('الحوافز', Icons.emoji_events_outlined),
-    ('المصروفات', Icons.receipt_long_outlined),
-    ('التقارير والفواتير', Icons.assessment_outlined),
-    ('الدفع والإعدادات', Icons.settings_outlined),
+  static const _all = [
+    ('overview', 'نظرة عامة', Icons.dashboard_outlined),
+    ('products', 'المنتجات', Icons.local_cafe_outlined),
+    ('staff', 'الموظفين', Icons.groups_outlined),
+    ('incentives', 'الحوافز', Icons.emoji_events_outlined),
+    ('expenses', 'المصروفات', Icons.receipt_long_outlined),
+    ('reports', 'التقارير والفواتير', Icons.assessment_outlined),
+    ('customers', 'العملاء', Icons.people_outline),
+    ('settings', 'الدفع والإعدادات', Icons.settings_outlined),
   ];
 
+  /// The supervisor sees reports, expenses and customers; the owner sees everything.
+  List<(String, String, IconData)> get _items => isOwner
+      ? _all
+      : _all
+          .where((x) => const ['overview', 'expenses', 'reports', 'customers'].contains(x.$1))
+          .toList();
+
   Widget _section() {
-    switch (_i) {
-      case 0:
+    switch (_items[_i.clamp(0, _items.length - 1)].$1) {
+      case 'overview':
         return const _OverviewSection();
-      case 1:
+      case 'products':
         return const _ProductsSection();
-      case 2:
+      case 'staff':
         return const _StaffSection();
-      case 3:
+      case 'incentives':
         return const _IncentivesSection();
-      case 4:
+      case 'expenses':
         return const _ExpensesSection();
-      case 5:
+      case 'reports':
         return const _ReportsSection();
+      case 'customers':
+        return const _CustomersSection();
       default:
         return const _SettingsSection();
     }
@@ -143,7 +158,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('BONNAYA • لوحة تحكم المالك',
+        title: Text(isOwner ? 'BONNAYA • لوحة تحكم المالك' : 'BONNAYA • لوحة المدير',
             style: TextStyle(fontWeight: FontWeight.w800)),
         actions: [
           TextButton.icon(
@@ -178,8 +193,8 @@ class _AdminDashboardState extends State<AdminDashboard> {
                       selectedColor: cOnBrand,
                       shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(14)),
-                      leading: Icon(_items[k].$2),
-                      title: Text(_items[k].$1,
+                      leading: Icon(_items[k].$3),
+                      title: Text(_items[k].$2,
                           style: const TextStyle(fontWeight: FontWeight.w700)),
                       onTap: () => setState(() => _i = k),
                     ),
@@ -241,7 +256,10 @@ class _OverviewSectionState extends State<_OverviewSection> {
           _Kpi('المبيعات', money(_n(r['sales']))),
           _Kpi('الأوردرات', '${_n(r['orders'])}'),
           _Kpi('تحويلات', money(_n(r['wallet']))),
+          _Kpi('فيزا', money(_n(r['visa']))),
           _Kpi('كاش', money(_n(r['cash']))),
+          _Kpi('خصومات', money(_n(r['discounts']))),
+          _Kpi('ملغي', '${_n(r['cancelled'])}'),
           _Kpi('مصروفات', money(_n(r['expenses']))),
           _Kpi('حوافز وعمولات', money(_n(r['bonuses']))),
           _Kpi('الصافي', money(_n(r['net'])), color: cBrand),
@@ -279,6 +297,17 @@ class _OverviewSectionState extends State<_OverviewSection> {
                       style: const TextStyle(fontWeight: FontWeight.w700)),
                 ]),
               ),
+            if ((d[0]['low_stock'] as List?)?.isNotEmpty == true)
+              _Panel(
+                title: 'قارب على النفاد',
+                child: Wrap(spacing: 10, runSpacing: 6, children: [
+                  for (final x in (d[0]['low_stock'] as List).cast<Map>())
+                    Chip(
+                      avatar: const Icon(Icons.warning_amber, size: 18, color: cGold),
+                      label: Text('${x['name']} • باقي ${x['left']}'),
+                    ),
+                ]),
+              ),
             _Panel(
               title: 'الحضور النهاردة',
               child: Wrap(spacing: 12, children: [
@@ -311,7 +340,7 @@ class _ProductsSectionState extends State<_ProductsSection> {
     await fetchCategories();
     final r = await sb
         .from('drinks')
-        .select('id, name, category, active, base_cost, sort_order, drink_prices(size, price)')
+        .select('id, name, category, active, base_cost, sort_order, stock_qty, sold_out, drink_prices(size, price)')
         .order('sort_order');
     return (r as List).cast<Map<String, dynamic>>();
   }
@@ -415,8 +444,16 @@ class _ProductsSectionState extends State<_ProductsSection> {
                                     style: TextStyle(
                                         fontWeight: FontWeight.w700,
                                         color: d['active'] == true ? cInk : cMuted)),
-                                Text(_prices(d),
-                                    style: const TextStyle(color: cMuted, fontSize: 12.5)),
+                                Text(
+                                    '${_prices(d)}'
+                                    '${d['sold_out'] == true ? '  •  خلص' : ''}'
+                                    '${d['stock_qty'] != null ? '  •  المخزون ${d['stock_qty']}' : ''}',
+                                    style: TextStyle(
+                                        color: (d['sold_out'] == true ||
+                                                (d['stock_qty'] != null && (d['stock_qty'] as num) <= 5))
+                                            ? cGold
+                                            : cMuted,
+                                        fontSize: 12.5)),
                               ])),
                           Switch(
                               value: d['active'] == true,
@@ -458,6 +495,9 @@ class _ProductDialogState extends State<_ProductDialog> {
     'medium': TextEditingController(),
     'large': TextEditingController(),
   };
+  late final _stock = TextEditingController(
+      text: widget.drink?['stock_qty'] == null ? '' : '${widget.drink?['stock_qty']}');
+  bool _soldOut = false;
   String _cat = 'hot';
   bool _multi = false;
   bool _saving = false;
@@ -468,6 +508,7 @@ class _ProductDialogState extends State<_ProductDialog> {
     final d = widget.drink;
     if (d != null) {
       _cat = d['category'] as String? ?? 'hot';
+      _soldOut = d['sold_out'] == true;
       final prices = {
         for (final p in (d['drink_prices'] as List)) p['size'] as String: _n(p['price'])
       };
@@ -514,6 +555,8 @@ class _ProductDialogState extends State<_ProductDialog> {
         'name': name,
         'category': _cat,
         'base_cost': double.tryParse(_cost.text.trim()) ?? 0,
+        'stock_qty': int.tryParse(_stock.text.trim()),
+        'sold_out': _soldOut,
       };
       if (id == null) {
         final r = await sb
@@ -567,6 +610,18 @@ class _ProductDialogState extends State<_ProductDialog> {
                   DropdownMenuItem(value: e.key, child: Text(e.value))
               ],
               onChanged: (v) => setState(() => _cat = v ?? _cat),
+            ),
+            TextField(
+              controller: _stock,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                  labelText: 'المخزون (سيبه فاضي لو مش بتعدّه)'),
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('خلص دلوقتي (مؤقتاً)'),
+              value: _soldOut,
+              onChanged: (v) => setState(() => _soldOut = v),
             ),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
@@ -1438,6 +1493,49 @@ class _ReportsSectionState extends State<_ReportsSection> {
     return {'r': Map<String, dynamic>.from(rep as Map), 'inv': inv};
   }
 
+  Future<void> _exportCsv(BuildContext context) async {
+    final m = ScaffoldMessenger.of(context);
+    try {
+      final now = DateTime.now();
+      final from = DateTime(now.year, now.month, now.day).subtract(Duration(days: _days - 1));
+      final rows = await sb
+          .from('orders')
+          .select('invoice_no, order_no, created_at, source, payment_method, status, discount, discount_reason, note, cancel_reason, total, seller_id')
+          .inFilter('status', ['delivered', 'cancelled'])
+          .gte('created_at', from.toUtc().toIso8601String())
+          .order('created_at')
+          .limit(5000);
+      final names = <String, String>{};
+      try {
+        final ps = await sb.from('profiles').select('id, full_name').not('staff_role', 'is', null);
+        for (final p in ps) {
+          names[p['id'] as String] = (p['full_name'] as String?) ?? '';
+        }
+      } catch (_) {}
+      String q(Object? v) {
+        final t = '${v ?? ''}'.replaceAll('"', '""');
+        return '"$t"';
+      }
+      final b = StringBuffer('\uFEFF')
+        ..writeln('رقم الفاتورة,رقم الطلب,الوقت,المصدر,الدفع,الحالة,الخصم,سبب الخصم,الإجمالي,البائع,ملاحظة,سبب الإلغاء');
+      for (final o in rows) {
+        b.writeln([
+          o['invoice_no'], o['order_no'], o['created_at'],
+          o['source'] == 'pos' ? 'كاشير' : 'أونلاين',
+          o['payment_method'], o['status'], o['discount'], o['discount_reason'],
+          o['total'], names[o['seller_id']] ?? '', o['note'], o['cancel_reason'],
+        ].map(q).join(','));
+      }
+      final dir = await getApplicationDocumentsDirectory();
+      final f = File('${dir.path}${Platform.pathSeparator}bonnaya-sales-${_d(now)}.csv');
+      await f.writeAsString(b.toString());
+      m.showSnackBar(SnackBar(content: Text('اتحفظ الملف: ${f.path}')));
+      await OpenFilex.open(f.path);
+    } catch (e) {
+      if (context.mounted) showError(context, e);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<Map<String, dynamic>>(
@@ -1475,11 +1573,23 @@ class _ReportsSectionState extends State<_ReportsSection> {
             _Kpi('المبيعات', money(_n(r['sales']))),
             _Kpi('الأوردرات', '${_n(r['orders'])}'),
             _Kpi('تحويلات', money(_n(r['wallet']))),
+            _Kpi('فيزا', money(_n(r['visa']))),
             _Kpi('كاش', money(_n(r['cash']))),
+            _Kpi('خصومات', money(_n(r['discounts']))),
+            _Kpi('ملغي', '${_n(r['cancelled'])}'),
             _Kpi('مصروفات', money(_n(r['expenses']))),
             _Kpi('حوافز وعمولات', money(_n(r['bonuses']))),
             _Kpi('الصافي', money(_n(r['net'])), color: cBrand),
           ]),
+          const SizedBox(height: 10),
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: OutlinedButton.icon(
+              icon: const Icon(Icons.download_outlined),
+              label: const Text('تصدير المبيعات (Excel / CSV)'),
+              onPressed: () => _exportCsv(context),
+            ),
+          ),
           const SizedBox(height: 14),
           if (byDay.length > 1)
             _Panel(
@@ -1578,10 +1688,12 @@ class _SettingsSectionState extends State<_SettingsSection> {
   late Future<Map<String, dynamic>> _f = _load();
   final _wallet = TextEditingController();
   final _wname = TextEditingController();
+  final _maxDisc = TextEditingController();
   bool _init = false;
 
   @override
   void dispose() {
+    _maxDisc.dispose();
     _wallet.dispose();
     _wname.dispose();
     super.dispose();
@@ -1598,7 +1710,16 @@ class _SettingsSectionState extends State<_SettingsSection> {
         .select('id, order_no, total, pay_ref, address_text, created_at')
         .eq('status', 'pending_payment')
         .order('created_at');
-    return {'p': (s?['value'] as Map?) ?? {}, 'pend': pend};
+    final pos = await sb
+        .from('app_settings')
+        .select('value')
+        .eq('key', 'pos')
+        .maybeSingle();
+    return {
+      'p': (s?['value'] as Map?) ?? {},
+      'pend': pend,
+      'pos': (pos?['value'] as Map?) ?? {},
+    };
   }
 
   void _reload() => setState(() => _f = _load());
@@ -1616,6 +1737,27 @@ class _SettingsSectionState extends State<_SettingsSection> {
       if (mounted) {
         ScaffoldMessenger.of(context)
             .showSnackBar(const SnackBar(content: Text('اتحفظ رقم المحفظة.')));
+      }
+    } catch (e) {
+      if (mounted) showError(context, e);
+    }
+  }
+
+  Future<void> _saveDiscount() async {
+    final v = double.tryParse(_maxDisc.text.trim());
+    if (v == null || v < 0 || v > 100) {
+      showError(context, 'اكتب نسبة من 0 لـ 100.');
+      return;
+    }
+    try {
+      await sb.from('app_settings').upsert({
+        'key': 'pos',
+        'value': {'max_discount_pct': v},
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('اتحفظ حد الخصم.')));
       }
     } catch (e) {
       if (mounted) showError(context, e);
@@ -1643,6 +1785,8 @@ class _SettingsSectionState extends State<_SettingsSection> {
           _init = true;
           _wallet.text = '${p['wallet_number'] ?? ''}';
           _wname.text = '${p['wallet_name'] ?? ''}';
+          final pos = snap.data!['pos'] as Map;
+          _maxDisc.text = '${pos['max_discount_pct'] ?? 10}';
         }
         final pend = (snap.data!['pend'] as List).cast<Map<String, dynamic>>();
         return ListView(padding: const EdgeInsets.all(16), children: [
@@ -1666,6 +1810,19 @@ class _SettingsSectionState extends State<_SettingsSection> {
                 const SizedBox(width: 12),
                 FilledButton(onPressed: _saveWallet, child: const Text('حفظ')),
               ]),
+            ]),
+          ),
+          _Panel(
+            title: 'حد الخصم للبائع',
+            child: Row(children: [
+              Expanded(
+                  child: TextField(
+                      controller: _maxDisc,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                          labelText: 'أقصى خصم يقدر البائع يعمله (٪ من الفاتورة)'))),
+              const SizedBox(width: 12),
+              FilledButton(onPressed: _saveDiscount, child: const Text('حفظ')),
             ]),
           ),
           _Panel(
@@ -1854,6 +2011,68 @@ class _CategoriesDialogState extends State<_CategoriesDialog> {
         FilledButton(
             onPressed: () => Navigator.pop(context), child: const Text('تمام')),
       ],
+    );
+  }
+}
+
+
+// ------------------------------------------------------------------ customers
+
+class _CustomersSection extends StatefulWidget {
+  const _CustomersSection();
+  @override
+  State<_CustomersSection> createState() => _CustomersSectionState();
+}
+
+class _CustomersSectionState extends State<_CustomersSection> {
+  late Future<List<Map<String, dynamic>>> _f = _load();
+
+  Future<List<Map<String, dynamic>>> _load() async {
+    final r = await sb.rpc('owner_customers');
+    return (r as List).cast<Map<String, dynamic>>();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<List<Map<String, dynamic>>>(
+      future: _f,
+      builder: (context, snap) {
+        if (snap.connectionState != ConnectionState.done) return _loading();
+        if (snap.hasError) {
+          return _problem(snap.error!, () => setState(() => _f = _load()));
+        }
+        final l = snap.data!;
+        return ListView(padding: const EdgeInsets.all(16), children: [
+          Row(children: [
+            const Text('العملاء',
+                style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800)),
+            const Spacer(),
+            IconButton(
+                tooltip: 'تحديث',
+                onPressed: () => setState(() => _f = _load()),
+                icon: const Icon(Icons.refresh)),
+          ]),
+          _Panel(
+            title: 'أكتر العملاء شراءً (${l.length})',
+            child: Column(children: [
+              if (l.isEmpty) const Text('لسه مفيش عملاء طلبوا.'),
+              for (final c in l)
+                ListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.person_outline),
+                  title: Text((c['name'] as String?)?.isNotEmpty == true
+                      ? '${c['name']}'
+                      : 'بدون اسم'),
+                  subtitle: Text(
+                      '${_n(c['orders'])} أوردر • آخر أوردر ${fmtTime(c['last_order'] as String)}'),
+                  trailing: Text(money(_n(c['spent'])),
+                      style: const TextStyle(fontWeight: FontWeight.w800)),
+                ),
+            ]),
+          ),
+        ]);
+      },
     );
   }
 }

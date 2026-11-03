@@ -273,6 +273,12 @@ const _errorRules = <List<String>>[
   ['too many items', 'الطلب كبير. قسّمه على طلبين.'],
   ['staff only', 'الصلاحية دي للموظفين بس.'],
   ['not allowed', 'مفيش عندك صلاحية للخطوة دي.'],
+  ['out_of_stock', 'الصنف ده خلص دلوقتي.'],
+  ['discount too high', 'الخصم أعلى من المسموح. اطلب من المدير.'],
+  ['already discounted', 'الفاتورة دي اتخصم عليها قبل كده.'],
+  ['reason required', 'اكتب السبب الأول.'],
+  ['already cancelled', 'الأوردر ده ملغي بالفعل.'],
+  ['cannot cancel', 'مينفعش تلغي الأوردر ده دلوقتي.'],
   ['store_closed', 'مش بنستقبل أوردرات دلوقتي. جرّب في مواعيد الشغل.'],
   ['address required', 'اكتب عنوان التوصيل.'],
   ['payment reference', 'اكتب رقم المحفظة اللي حوّلت منها.'],
@@ -332,7 +338,12 @@ class Drink {
   final String name;
   final Map<String, double> prices;
   final String category;
-  Drink(this.id, this.name, this.prices, [this.category = 'hot']);
+  final bool soldOut;
+  final int? stock;
+  Drink(this.id, this.name, this.prices,
+      [this.category = 'hot', this.soldOut = false, this.stock]);
+  /// False when the owner marked it sold out or its stock count reached zero.
+  bool get available => !soldOut && (stock == null || stock! > 0);
   /// Drinks come in sizes with sugar choices; snacks and sandwiches are a single item.
   bool get hasOptions => prices.length > 1;
   factory Drink.from(Map<String, dynamic> m) {
@@ -342,7 +353,9 @@ class Drink {
       prices[row['size'] as String] = (row['price'] as num).toDouble();
     }
     return Drink(m['id'] as String, m['name'] as String, prices,
-        (m['category'] as String?) ?? 'hot');
+        (m['category'] as String?) ?? 'hot',
+        m['sold_out'] == true,
+        (m['stock_qty'] as num?)?.toInt());
   }
   double get minPrice =>
       prices.isEmpty ? 0 : prices.values.reduce((a, b) => a < b ? a : b);
@@ -413,7 +426,7 @@ Future<Menu> loadMenu() async {
   await fetchCategories();
   final d = await sb
       .from('drinks')
-      .select('id, name, category, drink_prices(size, price)')
+      .select('id, name, category, sold_out, stock_qty, drink_prices(size, price)')
       .eq('active', true)
       .order('sort_order');
   final a = await sb
