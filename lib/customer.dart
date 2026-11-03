@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show AuthState;
 
 import 'core.dart';
+import 'notify.dart';
 import 'welcome.dart';
 import 'update.dart';
 import 'avatars.dart';
@@ -16,7 +17,7 @@ class CustomerApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return nasyaMaterialApp(
-      const SplashGate(next: UpdateWatcher(child: HomePage())),
+      const SplashGate(next: UpdateWatcher(child: OrderNotifier(child: HomePage()))),
     );
   }
 }
@@ -639,10 +640,42 @@ class _CartPageState extends State<CartPage> {
   // as soon as it returns. The same request id guarantees one order even if we retry.
   bool waiting = false;
   final String requestId = newRequestId();
+  Map<String, dynamic>? _q;
+  final _coupon = TextEditingController();
+  String _appliedCoupon = '';
+  String? _couponErr;
+  bool _usePoints = false;
+  double get _total => (_q?['total'] as num?)?.toDouble() ?? cart.total;
+
+  Future<void> _refreshQuote() async {
+    if (cart.lines.isEmpty) return;
+    try {
+      final r = await sb.rpc('order_quote', params: {
+        'p_items': cart.lines.map((l) => l.toJson()).toList(),
+        'p_coupon': _appliedCoupon.isEmpty ? null : _appliedCoupon,
+        'p_points': _usePoints ? 100000 : 0,
+      });
+      if (!mounted) return;
+      final q = Map<String, dynamic>.from(r as Map);
+      setState(() {
+        _q = q;
+        final ce = q['coupon_error'] as String?;
+        _couponErr = ce == null ? null : errorText(Exception(ce));
+        if (ce != null) _appliedCoupon = '';
+      });
+    } catch (_) {}
+  }
+
+  void _applyCoupon() {
+    _appliedCoupon = _coupon.text.trim();
+    _refreshQuote();
+  }
 
   @override
   void initState() {
     super.initState();
+    cart.addListener(_refreshQuote);
+    _refreshQuote();
     net.addListener(_onNet);
     loadStoreStatus().then((s) {
       if (mounted) setState(() => _store = s);
@@ -662,6 +695,8 @@ class _CartPageState extends State<CartPage> {
 
   @override
   void dispose() {
+    cart.removeListener(_refreshQuote);
+    _coupon.dispose();
     net.removeListener(_onNet);
     _payRef.dispose();
     super.dispose();
@@ -737,11 +772,13 @@ class _CartPageState extends State<CartPage> {
       waiting = false;
     });
     try {
-      final res = await sb.rpc('place_order_v3', params: {
+      final res = await sb.rpc('place_order_v4', params: {
         'p_request_id': requestId,
         'p_items': cart.lines.map((l) => l.toJson()).toList(),
         'p_address': _addr!.toJson(),
         'p_pay_ref': _payRef.text.trim(),
+        'p_coupon': _appliedCoupon.isEmpty ? null : _appliedCoupon,
+        'p_points': _usePoints ? 100000 : 0,
       });
       final id = res as String;
       cart.clear();
@@ -815,6 +852,8 @@ class _CartPageState extends State<CartPage> {
                   ],
                 ),
               ),
+              const SectionLabel('كوبون ونقاط'),
+              _extras(),
               const SectionLabel('الدفع'),
               Container(
                 padding: const EdgeInsets.all(14),
@@ -835,8 +874,8 @@ class _CartPageState extends State<CartPage> {
                     const SizedBox(height: 8),
                     Text(
                       _wallet.number.isEmpty
-                          ? 'حوّل ${money(cart.total)} على المحفظة، وبعدين اكتب رقم المحفظة اللي حوّلت منها. هنبعتلك رقم المحفظة أول ما تبعت الطلب.'
-                          : 'حوّل ${money(cart.total)} على المحفظة رقم:',
+                          ? 'حوّل ${money(_total)} على المحفظة، وبعدين اكتب رقم المحفظة اللي حوّلت منها. هنبعتلك رقم المحفظة أول ما تبعت الطلب.'
+                          : 'حوّل ${money(_total)} على المحفظة رقم:',
                       style: const TextStyle(color: cMuted, height: 1.6),
                     ),
                     if (_wallet.number.isNotEmpty) ...[
@@ -893,16 +932,108 @@ class _CartPageState extends State<CartPage> {
               FilledButton(
                 style: FilledButton.styleFrom(
                     minimumSize: const Size.fromHeight(56)),
-                onPressed: busy || (_store != null && !_store!.open) ? null : _place,
+                onPressed: busy || (_store != null && !_store!.open) || _belowMin ? null : _place,
                 child: Text(
                     waiting
-                        ? 'استنى النت وابعت  •  ${money(cart.total)}'
-                        : 'اتحوّل؟ ابعت الطلب  •  ${money(cart.total)}',
+                        ? 'استنى النت وابعت  •  ${money(_total)}'
+                        : 'اتحوّل؟ ابعت الطلب  •  ${money(_total)}',
                     style: const TextStyle(fontSize: 17)),
               ),
             ],
           );
         },
+      ),
+    );
+  }
+
+  bool get _belowMin {
+    final q = _q;
+    if (q == null) return false;
+    return (q['subtotal'] as num) < (q['min_order'] as num);
+  }
+
+  Widget _row(String a, String b, {Color? color, bool bold = false}) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 3),
+        child: Row(children: [
+          Expanded(
+              child: Text(a,
+                  style: TextStyle(
+                      color: color,
+                      fontWeight: bold ? FontWeight.w800 : FontWeight.w500))),
+          Text(b,
+              style: TextStyle(
+                  color: color,
+                  fontWeight: bold ? FontWeight.w800 : FontWeight.w600)),
+        ]),
+      );
+
+  Widget _extras() {
+    final q = _q;
+    final bal = (q?['balance'] as num?)?.toInt() ?? 0;
+    final minRedeem = (q?['min_redeem'] as num?)?.toInt() ?? 0;
+    final loyalty = q?['loyalty'] == true;
+    final pv = (q?['point_value'] as num?)?.toDouble() ?? 0.5;
+    final cd = (q?['coupon_discount'] as num?)?.toDouble() ?? 0;
+    final pd = (q?['points_discount'] as num?)?.toDouble() ?? 0;
+    final fee = (q?['fee'] as num?)?.toDouble() ?? 0;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: cCream2,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: cHair),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(children: [
+            Expanded(
+              child: TextField(
+                controller: _coupon,
+                textCapitalization: TextCapitalization.characters,
+                decoration: const InputDecoration(labelText: 'كود الخصم (لو معاك)'),
+                onSubmitted: (_) => _applyCoupon(),
+              ),
+            ),
+            const SizedBox(width: 8),
+            FilledButton(onPressed: _applyCoupon, child: const Text('تطبيق')),
+          ]),
+          if (_couponErr != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(_couponErr!, style: const TextStyle(color: cDanger)),
+            ),
+          if (loyalty && sb.auth.currentSession != null) ...[
+            const SizedBox(height: 6),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              value: _usePoints && bal >= minRedeem && bal > 0,
+              onChanged: bal >= minRedeem && bal > 0
+                  ? (v) {
+                      _usePoints = v;
+                      _refreshQuote();
+                    }
+                  : null,
+              title: Text('استخدم نقاطك ($bal نقطة)'),
+              subtitle: Text(bal >= minRedeem && bal > 0
+                  ? 'كل نقطة بـ ${money(pv)}'
+                  : 'تقدر تستبدل من $minRedeem نقطة. كل طلب بيجمّعلك نقاط.'),
+            ),
+          ],
+          const Divider(height: 22),
+          _row('حساب الطلب', money((q?['subtotal'] as num?)?.toDouble() ?? cart.total)),
+          _row('التوصيل', fee == 0 ? 'مجاني' : money(fee)),
+          if (cd > 0) _row('خصم الكوبون', '-${money(cd)}', color: cGreen),
+          if (pd > 0) _row('خصم النقاط', '-${money(pd)}', color: cGreen),
+          _row('الإجمالي', money(_total), bold: true),
+          if (_belowMin)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(
+                  'أقل قيمة للطلب ${money((q!['min_order'] as num).toDouble())}. زوّد حاجة عشان تكمّل.',
+                  style: const TextStyle(color: cDanger, fontWeight: FontWeight.w700)),
+            ),
+        ],
       ),
     );
   }
@@ -1135,6 +1266,18 @@ class _TrackPageState extends State<TrackPage> {
                 const SizedBox(height: 10),
               ],
               const Divider(color: cHair),
+              if (((o['delivery_fee'] as num?) ?? 0) > 0)
+                Text('توصيل: ${money(o['delivery_fee'] as num)}',
+                    style: const TextStyle(color: cMuted)),
+              if (((o['coupon_discount'] as num?) ?? 0) > 0)
+                Text('خصم الكوبون: -${money(o['coupon_discount'] as num)}',
+                    style: const TextStyle(color: cGreen)),
+              if (((o['points_discount'] as num?) ?? 0) > 0)
+                Text('خصم النقاط: -${money(o['points_discount'] as num)}',
+                    style: const TextStyle(color: cGreen)),
+              if (((o['points_earned'] as num?) ?? 0) > 0)
+                Text('كسبت ${o['points_earned']} نقطة من الطلب ده ✨',
+                    style: const TextStyle(color: cGreen)),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [

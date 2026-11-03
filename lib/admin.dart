@@ -1,6 +1,10 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' show UserAttributes;
 import 'package:open_filex/open_filex.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -10,6 +14,8 @@ import 'core.dart';
 import 'ops.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'update.dart';
+
+part 'admin_more.dart';
 
 const jobLabels = {
   'seller': 'بياع',
@@ -113,9 +119,12 @@ class _AdminDashboardState extends State<AdminDashboard> {
     ('products', 'المنتجات', Icons.local_cafe_outlined),
     ('staff', 'الموظفين', Icons.groups_outlined),
     ('incentives', 'الحوافز', Icons.emoji_events_outlined),
+    ('payroll', 'المرتبات', Icons.payments_outlined),
     ('expenses', 'المصروفات', Icons.receipt_long_outlined),
+    ('offers', 'التوصيل والعروض', Icons.local_offer_outlined),
     ('reports', 'التقارير والفواتير', Icons.assessment_outlined),
     ('customers', 'العملاء', Icons.people_outline),
+    ('audit', 'سجل التعديلات', Icons.history),
     ('settings', 'الدفع والإعدادات', Icons.settings_outlined),
   ];
 
@@ -136,6 +145,12 @@ class _AdminDashboardState extends State<AdminDashboard> {
         return const _StaffSection();
       case 'incentives':
         return const _IncentivesSection();
+      case 'payroll':
+        return const _PayrollSection();
+      case 'offers':
+        return const _OffersSection();
+      case 'audit':
+        return const _AuditSection();
       case 'expenses':
         return const _ExpensesSection();
       case 'reports':
@@ -1001,6 +1016,7 @@ class _StaffCardDialogState extends State<_StaffCardDialog> {
     'manual': 'مكافأة',
     'tip': 'بقشيش',
     'penalty': 'خصم',
+    'advance': 'سلفة',
   };
   static const _kindAll = {
     'early': 'حضور مبكر',
@@ -1008,6 +1024,7 @@ class _StaffCardDialogState extends State<_StaffCardDialog> {
     'manual': 'مكافأة',
     'tip': 'بقشيش',
     'penalty': 'خصم',
+    'advance': 'سلفة',
   };
 
   @override
@@ -1058,7 +1075,7 @@ class _StaffCardDialogState extends State<_StaffCardDialog> {
                   final total = bon.fold<double>(
                       0,
                       (s, b) =>
-                          s + (b['kind'] == 'penalty' ? -1 : 1) * _n(b['amount']).toDouble());
+                          s + ((b['kind'] == 'penalty' || b['kind'] == 'advance') ? -1 : 1) * _n(b['amount']).toDouble());
                   return TabBarView(children: [
                     // ---- info
                     ListView(padding: const EdgeInsets.all(16), children: [
@@ -1152,10 +1169,10 @@ class _StaffCardDialogState extends State<_StaffCardDialog> {
                           title: Text('${_kindAll[b['kind']] ?? b['kind']}${(b['note'] as String?)?.isNotEmpty == true ? ' • ${b['note']}' : ''}'),
                           subtitle: Text('${DateTime.parse(b['created_at'] as String).toLocal()}'.substring(0, 16)),
                           trailing: Text(
-                              '${b['kind'] == 'penalty' ? '-' : '+'}${money(_n(b['amount']))}',
+                              '${(b['kind'] == 'penalty' || b['kind'] == 'advance') ? '-' : '+'}${money(_n(b['amount']))}',
                               style: TextStyle(
                                   fontWeight: FontWeight.w800,
-                                  color: b['kind'] == 'penalty' ? cDanger : cGreen)),
+                                  color: (b['kind'] == 'penalty' || b['kind'] == 'advance') ? cDanger : cGreen)),
                         ),
                     ]),
                     // ---- gear
@@ -1321,10 +1338,10 @@ class _IncentivesSectionState extends State<_IncentivesSection> {
                   title: Text('${(b['profiles'] as Map?)?['full_name'] ?? ''}'),
                   subtitle: Text('${_StaffCardDialogState._kindAll[b['kind']] ?? b['kind']}${(b['note'] as String?)?.isNotEmpty == true ? ' • ${b['note']}' : ''}'),
                   trailing: Text(
-                      '${b['kind'] == 'penalty' ? '-' : '+'}${money(_n(b['amount']))}',
+                      '${(b['kind'] == 'penalty' || b['kind'] == 'advance') ? '-' : '+'}${money(_n(b['amount']))}',
                       style: TextStyle(
                           fontWeight: FontWeight.w800,
-                          color: b['kind'] == 'penalty' ? cDanger : cGreen)),
+                          color: (b['kind'] == 'penalty' || b['kind'] == 'advance') ? cDanger : cGreen)),
                 ),
             ]),
           ),
@@ -1802,6 +1819,7 @@ class _SettingsSectionState extends State<_SettingsSection> {
           const Text('الدفع والإعدادات',
               style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800)),
           const SizedBox(height: 10),
+          const _AccountPanel(),
           _Panel(
             title: 'المحفظة اللي العميل بيحوّل عليها',
             child: Column(children: [
