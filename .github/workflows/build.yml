@@ -88,7 +88,10 @@ jobs:
         run: |
           flutter pub add --dev flutter_launcher_icons
           dart run flutter_launcher_icons -f icons_windows.yaml
-      - run: flutter build windows --release -t lib/main_cashier.dart --build-number=${{ github.run_number }}
+      - name: Build Windows
+        env:
+          CL: /D_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS
+        run: flutter build windows --release -t lib/main_cashier.dart --build-number=${{ github.run_number }}
       - name: Zip the app
         shell: pwsh
         run: Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath bonnaya-cashier-windows.zip
