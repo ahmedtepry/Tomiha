@@ -15,7 +15,7 @@ import 'ops.dart';
 import 'admin.dart';
 
 const _orderSelect =
-    '*, profiles(full_name), order_items(*, drinks(name, drink_prices(size)), order_item_addons(*, addons(name)))';
+    '*, profiles(full_name), order_items(*, drinks(name, is_coffee, drink_prices(size)), order_item_addons(*, addons(name)))';
 
 /// The signed-in employee (job, name, employee number), loaded by the gate.
 Map<String, dynamic> myStaff = {};
@@ -1474,9 +1474,9 @@ class _ItemDialogState extends State<_ItemDialog> {
                 ),
                 const SectionLabel('السكر'),
                 Choices<String>(
-                  values: sugarKeys,
+                  values: sugarKeysFor(d.isCoffee),
                   selected: sugar,
-                  label: (s) => sugarLabel[s]!,
+                  label: (s) => sugarLabelFor(d.isCoffee, s),
                   onChanged: (v) => setState(() => sugar = v),
                 ),
               ],

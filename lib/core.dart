@@ -238,6 +238,21 @@ const sugarLabel = {
   'normal': 'مظبوط',
   'extra': 'زيادة',
 };
+/// Coffee: سادة / على الريحة / مظبوط / زيادة. Other drinks: بسيط / مظبوط / زيادة.
+List<String> sugarKeysFor(bool coffee) =>
+    coffee ? sugarKeys : const ['light', 'normal', 'extra'];
+String sugarLabelFor(bool coffee, String k) => coffee
+    ? (sugarLabel[k] ?? '')
+    : const {'none': 'بسيط', 'light': 'بسيط', 'normal': 'مظبوط', 'extra': 'زيادة'}[k] ?? '';
+String sugarDescFor(bool coffee, String? k) => coffee
+    ? (sugarDesc[k] ?? '')
+    : const {
+          'none': 'سكر بسيط',
+          'light': 'سكر بسيط',
+          'normal': 'سكر مظبوط',
+          'extra': 'سكر زيادة'
+        }[k] ??
+        '';
 const sugarDesc = {
   'none': 'سادة',
   'light': 'سكر على الريحة',
@@ -340,8 +355,9 @@ class Drink {
   final String category;
   final bool soldOut;
   final int? stock;
+  final bool isCoffee;
   Drink(this.id, this.name, this.prices,
-      [this.category = 'hot', this.soldOut = false, this.stock]);
+      [this.category = 'hot', this.soldOut = false, this.stock, this.isCoffee = false]);
   /// False when the owner marked it sold out or its stock count reached zero.
   bool get available => !soldOut && (stock == null || stock! > 0);
   /// Drinks come in sizes with sugar choices; snacks and sandwiches are a single item.
@@ -355,7 +371,8 @@ class Drink {
     return Drink(m['id'] as String, m['name'] as String, prices,
         (m['category'] as String?) ?? 'hot',
         m['sold_out'] == true,
-        (m['stock_qty'] as num?)?.toInt());
+        (m['stock_qty'] as num?)?.toInt(),
+        m['is_coffee'] == true);
   }
   double get minPrice =>
       prices.isEmpty ? 0 : prices.values.reduce((a, b) => a < b ? a : b);
@@ -426,7 +443,7 @@ Future<Menu> loadMenu() async {
   await fetchCategories();
   final d = await sb
       .from('drinks')
-      .select('id, name, category, sold_out, stock_qty, drink_prices(size, price)')
+      .select('id, name, category, sold_out, stock_qty, is_coffee, drink_prices(size, price)')
       .eq('active', true)
       .order('sort_order');
   final a = await sb
@@ -458,7 +475,7 @@ class CartLine {
       ? '${drink.name} ${sizeLabel[size] ?? ''} × $qty'
       : '${drink.name} × $qty';
   String get notes => [
-        if (drink.hasOptions) sugarDesc[sugar] ?? '',
+        if (drink.hasOptions) sugarDescFor(drink.isCoffee, sugar),
         for (final a in addons) '+ ${a.name}',
       ].join(' · ');
 
@@ -510,7 +527,8 @@ String itemNotes(Map<String, dynamic> it) {
       (((it['drinks'] as Map<String, dynamic>)['drink_prices'] as List?)?.length ??
               2) >
           1;
-  final parts = <String>[if (multi) sugarDesc[it['sugar']] ?? ''];
+  final coffee = (it['drinks'] as Map<String, dynamic>)['is_coffee'] == true;
+  final parts = <String>[if (multi) sugarDescFor(coffee, it['sugar'] as String?)];
   for (final a in (it['order_item_addons'] as List)) {
     final row = a as Map<String, dynamic>;
     final addon = row['addons'] as Map<String, dynamic>;

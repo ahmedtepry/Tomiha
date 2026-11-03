@@ -544,9 +544,9 @@ class _DrinkSheetState extends State<DrinkSheet> {
               ),
               const SectionLabel('السكر'),
               Choices<String>(
-                values: sugarKeys,
+                values: sugarKeysFor(widget.drink.isCoffee),
                 selected: sugar,
-                label: (s) => sugarLabel[s]!,
+                label: (s) => sugarLabelFor(widget.drink.isCoffee, s),
                 onChanged: (v) => setState(() => sugar = v),
               ),
               if (widget.addons.isNotEmpty) const SectionLabel('إضافات'),
@@ -978,7 +978,7 @@ class _TrackPageState extends State<TrackPage> {
       final r = await sb
           .from('orders')
           .select(
-              '*, order_items(*, drinks(name, drink_prices(size)), order_item_addons(*, addons(name)))')
+              '*, order_items(*, drinks(name, is_coffee, drink_prices(size)), order_item_addons(*, addons(name)))')
           .eq('id', widget.orderId)
           .single();
       if (mounted) {

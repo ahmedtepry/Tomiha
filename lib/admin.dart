@@ -340,7 +340,7 @@ class _ProductsSectionState extends State<_ProductsSection> {
     await fetchCategories();
     final r = await sb
         .from('drinks')
-        .select('id, name, category, active, base_cost, sort_order, stock_qty, sold_out, drink_prices(size, price)')
+        .select('id, name, category, active, base_cost, sort_order, stock_qty, sold_out, is_coffee, drink_prices(size, price)')
         .order('sort_order');
     return (r as List).cast<Map<String, dynamic>>();
   }
@@ -498,6 +498,7 @@ class _ProductDialogState extends State<_ProductDialog> {
   late final _stock = TextEditingController(
       text: widget.drink?['stock_qty'] == null ? '' : '${widget.drink?['stock_qty']}');
   bool _soldOut = false;
+  bool _coffee = false;
   String _cat = 'hot';
   bool _multi = false;
   bool _saving = false;
@@ -509,6 +510,7 @@ class _ProductDialogState extends State<_ProductDialog> {
     if (d != null) {
       _cat = d['category'] as String? ?? 'hot';
       _soldOut = d['sold_out'] == true;
+      _coffee = d['is_coffee'] == true;
       final prices = {
         for (final p in (d['drink_prices'] as List)) p['size'] as String: _n(p['price'])
       };
@@ -557,6 +559,7 @@ class _ProductDialogState extends State<_ProductDialog> {
         'base_cost': double.tryParse(_cost.text.trim()) ?? 0,
         'stock_qty': int.tryParse(_stock.text.trim()),
         'sold_out': _soldOut,
+        'is_coffee': _coffee,
       };
       if (id == null) {
         final r = await sb
@@ -616,6 +619,12 @@ class _ProductDialogState extends State<_ProductDialog> {
               keyboardType: TextInputType.number,
               decoration: const InputDecoration(
                   labelText: 'المخزون (سيبه فاضي لو مش بتعدّه)'),
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('قهوة (السكر: سادة / على الريحة / مظبوط / زيادة)'),
+              value: _coffee,
+              onChanged: (v) => setState(() => _coffee = v),
             ),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
@@ -1466,7 +1475,7 @@ class _ExpensesSectionState extends State<_ExpensesSection> {
 // ------------------------------------------------------------------ reports + invoices
 
 const _invoiceSelect =
-    '*, order_items(*, drinks(name, drink_prices(size)), order_item_addons(*, addons(name)))';
+    '*, order_items(*, drinks(name, is_coffee, drink_prices(size)), order_item_addons(*, addons(name)))';
 
 class _ReportsSection extends StatefulWidget {
   const _ReportsSection();
