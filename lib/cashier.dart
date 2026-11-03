@@ -775,33 +775,19 @@ class PosPanel extends StatefulWidget {
 
 class _PosPanelState extends State<PosPanel> {
   late Future<Menu> _menu = _fetchMenu();
-  Drink? drink;
-  String size = 'medium';
-  String sugar = 'normal';
-  int qty = 1;
-  final Set<String> picked = {};
+  String cat = 'all';
   final List<CartLine> ticket = [];
   String pay = 'cash';
   bool busy = false;
 
   double get _ticketTotal => ticket.fold<double>(0, (s, l) => s + l.total);
 
-  void _addLine(Menu menu) {
-    final d = drink;
-    if (d == null) return;
-    final sz = d.prices.containsKey(size) ? size : d.prices.keys.first;
-    setState(() {
-      ticket.add(CartLine(
-        drink: d,
-        size: sz,
-        sugar: sugar,
-        qty: qty,
-        addons: menu.addons.where((a) => picked.contains(a.id)).toList(),
-      ));
-      drink = null;
-      qty = 1;
-      picked.clear();
-    });
+  Future<void> _pick(Menu menu, Drink d) async {
+    final line = await showDialog<CartLine>(
+      context: context,
+      builder: (_) => _ItemDialog(drink: d, addons: menu.addons),
+    );
+    if (line != null && mounted) setState(() => ticket.add(line));
   }
 
   Future<void> _pay() async {
@@ -906,6 +892,8 @@ class _PosPanelState extends State<PosPanel> {
         return Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            SizedBox(width: 190, child: _categories(menu)),
+            const VerticalDivider(width: 1, color: cHair),
             Expanded(child: _selector(menu)),
             const VerticalDivider(width: 1, color: cHair),
             SizedBox(width: 320, child: _ticket()),
@@ -915,114 +903,85 @@ class _PosPanelState extends State<PosPanel> {
     );
   }
 
+  Widget _categories(Menu menu) {
+    int count(String c) =>
+        c == 'all' ? menu.drinks.length : menu.drinks.where((x) => x.category == c).length;
+    final items = [
+      for (final c in _posCats)
+        if (c.$1 == 'all' || count(c.$1) > 0) c,
+    ];
+    return ListView(
+      padding: const EdgeInsets.all(10),
+      children: [
+        for (final c in items)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: ListTile(
+              selected: cat == c.$1,
+              selectedTileColor: cBrand,
+              selectedColor: cOnBrand,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14)),
+              leading: Icon(c.$3),
+              title: Text(c.$2,
+                  style: const TextStyle(fontWeight: FontWeight.w700)),
+              trailing: Text('${count(c.$1)}',
+                  style: const TextStyle(fontSize: 12)),
+              onTap: () => setState(() => cat = c.$1),
+            ),
+          ),
+      ],
+    );
+  }
+
   Widget _selector(Menu menu) {
-    final d = drink;
-    final sizes = d == null
-        ? sizeKeys
-        : sizeKeys.where(d.prices.containsKey).toList();
+    final list = cat == 'all'
+        ? menu.drinks
+        : menu.drinks.where((x) => x.category == cat).toList();
+    final title = _posCats.firstWhere((c) => c.$1 == cat).$2;
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('بيع مباشر',
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800)),
+          Text(cat == 'all' ? 'بيع مباشر' : title,
+              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800)),
           const SizedBox(height: 12),
           Wrap(
             spacing: 10,
             runSpacing: 10,
             children: [
-              for (final x in menu.drinks)
+              for (final x in list)
                 SizedBox(
                   width: 150,
-                  height: 72,
-                  child: x.id == d?.id
-                      ? FilledButton(
-                          style: FilledButton.styleFrom(backgroundColor: cInk),
-                          onPressed: () => setState(() => drink = x),
-                          child: Text(x.name, textAlign: TextAlign.center),
-                        )
-                      : FilledButton.tonal(
-                          style: FilledButton.styleFrom(
-                            backgroundColor: cCream2,
-                            foregroundColor: cInk,
-                          ),
-                          onPressed: () => setState(() => drink = x),
-                          child: Text(x.name, textAlign: TextAlign.center),
-                        ),
+                  height: 84,
+                  child: FilledButton.tonal(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: cCream2,
+                      foregroundColor: cInk,
+                    ),
+                    onPressed: () => _pick(menu, x),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(x.name,
+                            textAlign: TextAlign.center,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis),
+                        const SizedBox(height: 4),
+                        Text(
+                            x.hasOptions
+                                ? 'من ${money(x.minPrice)}'
+                                : money(x.minPrice),
+                            style: const TextStyle(
+                                color: cBrand,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w800)),
+                      ],
+                    ),
+                  ),
                 ),
             ],
-          ),
-          if (d == null || d.hasOptions) ...[
-            const SectionLabel('الحجم'),
-            Choices<String>(
-              values: sizes,
-              selected: size,
-              label: (s) => d == null
-                  ? sizeLabel[s]!
-                  : '${sizeLabel[s]}  ${money(d.prices[s] ?? 0)}',
-              onChanged: (v) => setState(() => size = v),
-            ),
-            const SectionLabel('السكر'),
-            Choices<String>(
-              values: sugarKeys,
-              selected: sugar,
-              label: (s) => sugarLabel[s]!,
-              onChanged: (v) => setState(() => sugar = v),
-            ),
-          ],
-          const SectionLabel('إضافات'),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              for (final a in menu.addons)
-                FilterChip(
-                  label: Text('${a.name}  +${money(a.price)}'),
-                  selected: picked.contains(a.id),
-                  showCheckmark: false,
-                  selectedColor: cGold,
-                  backgroundColor: cCream2,
-                  side: const BorderSide(color: cHair),
-                  onSelected: (v) {
-                    setState(() {
-                      if (v) {
-                        picked.add(a.id);
-                      } else {
-                        picked.remove(a.id);
-                      }
-                    });
-                  },
-                ),
-            ],
-          ),
-          const SectionLabel('الكمية'),
-          Row(
-            children: [
-              IconButton.outlined(
-                icon: const Icon(Icons.remove),
-                onPressed: qty > 1 ? () => setState(() => qty--) : null,
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 18),
-                child: Text('$qty',
-                    style: const TextStyle(
-                        fontSize: 20, fontWeight: FontWeight.w700)),
-              ),
-              IconButton.outlined(
-                icon: const Icon(Icons.add),
-                onPressed: qty < 20 ? () => setState(() => qty++) : null,
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: cBrand,
-              minimumSize: const Size.fromHeight(56),
-            ),
-            onPressed: d == null ? null : () => _addLine(menu),
-            child: Text(d == null ? 'اختار المشروب الأول' : 'أضف للفاتورة'),
           ),
         ],
       ),
@@ -1106,6 +1065,138 @@ class _PosPanelState extends State<PosPanel> {
           ),
         ],
       ),
+    );
+  }
+}
+
+const _posCats = <(String, String, IconData)>[
+  ('all', 'الكل', Icons.apps),
+  ('hot', 'مشروبات ساخنة', Icons.coffee_outlined),
+  ('cold', 'مشروبات باردة', Icons.local_drink_outlined),
+  ('chocolate', 'كورنر الشوكولاتة', Icons.icecream_outlined),
+  ('snacks', 'سناكس', Icons.cookie_outlined),
+  ('crackers', 'مقرمشات', Icons.bakery_dining_outlined),
+  ('sandwiches', 'سندوتشات', Icons.lunch_dining_outlined),
+];
+
+/// Opens when a product is tapped: shows its price, options, extras and quantity.
+class _ItemDialog extends StatefulWidget {
+  final Drink drink;
+  final List<Addon> addons;
+  const _ItemDialog({required this.drink, required this.addons});
+  @override
+  State<_ItemDialog> createState() => _ItemDialogState();
+}
+
+class _ItemDialogState extends State<_ItemDialog> {
+  late String size = widget.drink.prices.containsKey('medium')
+      ? 'medium'
+      : widget.drink.prices.keys.first;
+  String sugar = 'normal';
+  int qty = 1;
+  final Set<String> picked = {};
+
+  CartLine get _line => CartLine(
+        drink: widget.drink,
+        size: size,
+        sugar: sugar,
+        qty: qty,
+        addons: widget.addons.where((a) => picked.contains(a.id)).toList(),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    final d = widget.drink;
+    final sizes = sizeKeys.where(d.prices.containsKey).toList();
+    return AlertDialog(
+      title: Row(
+        children: [
+          Expanded(child: Text(d.name)),
+          Text(money(d.prices[size] ?? d.minPrice),
+              style: const TextStyle(
+                  color: cBrand, fontWeight: FontWeight.w800)),
+        ],
+      ),
+      content: SizedBox(
+        width: 420,
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (d.hasOptions) ...[
+                const SectionLabel('الحجم'),
+                Choices<String>(
+                  values: sizes,
+                  selected: size,
+                  label: (s) => '${sizeLabel[s]}  ${money(d.prices[s] ?? 0)}',
+                  onChanged: (v) => setState(() => size = v),
+                ),
+                const SectionLabel('السكر'),
+                Choices<String>(
+                  values: sugarKeys,
+                  selected: sugar,
+                  label: (s) => sugarLabel[s]!,
+                  onChanged: (v) => setState(() => sugar = v),
+                ),
+              ],
+              if (widget.addons.isNotEmpty) ...[
+                const SectionLabel('إضافات'),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final a in widget.addons)
+                      FilterChip(
+                        label: Text('${a.name}  +${money(a.price)}'),
+                        selected: picked.contains(a.id),
+                        showCheckmark: false,
+                        selectedColor: cGold,
+                        backgroundColor: cCream2,
+                        side: const BorderSide(color: cHair),
+                        onSelected: (v) => setState(() {
+                          if (v) {
+                            picked.add(a.id);
+                          } else {
+                            picked.remove(a.id);
+                          }
+                        }),
+                      ),
+                  ],
+                ),
+              ],
+              const SectionLabel('الكمية'),
+              Row(
+                children: [
+                  IconButton.outlined(
+                    icon: const Icon(Icons.remove),
+                    onPressed: qty > 1 ? () => setState(() => qty--) : null,
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 18),
+                    child: Text('$qty',
+                        style: const TextStyle(
+                            fontSize: 20, fontWeight: FontWeight.w700)),
+                  ),
+                  IconButton.outlined(
+                    icon: const Icon(Icons.add),
+                    onPressed: qty < 50 ? () => setState(() => qty++) : null,
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
+        FilledButton(
+          style: FilledButton.styleFrom(backgroundColor: cBrand),
+          onPressed: () => Navigator.pop(context, _line),
+          child: Text('أضف للفاتورة • ${money(_line.total)}'),
+        ),
+      ],
     );
   }
 }
