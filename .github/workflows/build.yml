@@ -48,6 +48,11 @@ jobs:
           open(p, 'w').write(s)
           PY
       - run: flutter pub get
+      - name: Apply app icon
+        run: |
+          flutter pub add --dev flutter_launcher_icons
+          dart run flutter_launcher_icons -f icons_android.yaml
+          sed -i 's#android:icon="@mipmap/ic_launcher"#android:icon="@mipmap/launcher_icon"#' android/app/src/main/AndroidManifest.xml
       - run: flutter build apk --release -t lib/main.dart --build-number=${{ github.run_number }}
       - run: cp build/app/outputs/flutter-apk/app-release.apk bonnaya.apk
       - uses: actions/upload-artifact@v4
@@ -77,6 +82,10 @@ jobs:
       - name: Set window title
         run: sed -i 's/L"bonnaya"/L"BONNAYA Cashier"/' windows/runner/main.cpp
       - run: flutter pub get
+      - name: Apply app icon
+        run: |
+          flutter pub add --dev flutter_launcher_icons
+          dart run flutter_launcher_icons -f icons_windows.yaml
       - run: flutter build windows --release -t lib/main_cashier.dart --build-number=${{ github.run_number }}
       - name: Zip the app
         shell: pwsh
