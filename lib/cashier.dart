@@ -108,47 +108,10 @@ class _CashierGateState extends State<CashierGate> {
     if (net.online && _lastFailed && mounted) _reload();
   }
 
-  Future<void> _loadTotals() async {
-    try {
-      final rows = await sb
-          .from('orders')
-          .select('total, payment_method')
-          .eq('shift_id', widget.shiftId)
-          .eq('payment_status', 'paid')
-          .neq('status', 'cancelled');
-      var c = 0.0, v = 0.0;
-      for (final r in rows) {
-        final t = (r['total'] as num?)?.toDouble() ?? 0;
-        if (r['payment_method'] == 'cash') c += t;
-        if (r['payment_method'] == 'visa') v += t;
-      }
-      if (mounted) setState(() {
-        cashTotal = c;
-        visaTotal = v;
-      });
-    } catch (_) {}
-  }
-
-  Future<void> _pickSeller() async {
-    final picked = await showDialog<Map<String, dynamic>>(
-      context: context,
-      builder: (_) => const _SellerDialog(),
-    );
-    if (picked != null && mounted) {
-      setState(() {
-        activeSellerId = picked['id'] as String;
-        activeSellerName = picked['full_name'] as String? ?? '';
-      });
-    }
-  }
-
   @override
   void initState() {
     super.initState();
-    activeSellerId ??= sb.auth.currentUser?.id;
-    activeSellerName ??= (myStaff['full_name'] as String?) ?? 'البائع';
     net.addListener(_onNet);
-    _loadTotals();
   }
 
   @override
@@ -905,10 +868,47 @@ class _PosPanelState extends State<PosPanel> {
     }
   }
 
+  Future<void> _loadTotals() async {
+    try {
+      final rows = await sb
+          .from('orders')
+          .select('total, payment_method')
+          .eq('shift_id', widget.shiftId)
+          .eq('payment_status', 'paid')
+          .neq('status', 'cancelled');
+      var c = 0.0, v = 0.0;
+      for (final r in rows) {
+        final t = (r['total'] as num?)?.toDouble() ?? 0;
+        if (r['payment_method'] == 'cash') c += t;
+        if (r['payment_method'] == 'visa') v += t;
+      }
+      if (mounted) setState(() {
+        cashTotal = c;
+        visaTotal = v;
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _pickSeller() async {
+    final picked = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (_) => const _SellerDialog(),
+    );
+    if (picked != null && mounted) {
+      setState(() {
+        activeSellerId = picked['id'] as String;
+        activeSellerName = picked['full_name'] as String? ?? '';
+      });
+    }
+  }
+
   @override
   void initState() {
     super.initState();
+    activeSellerId ??= sb.auth.currentUser?.id;
+    activeSellerName ??= (myStaff['full_name'] as String?) ?? 'البائع';
     net.addListener(_onNet);
+    _loadTotals();
   }
 
   @override

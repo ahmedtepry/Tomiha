@@ -21,32 +21,85 @@ class UpdateInfo {
 
 /// Asks GitHub for the newest published build. Returns null when it cannot
 /// be reached (no internet, rate limit, anything else).
+/// Why the last check failed (shown to the owner only, to help find the cause).
+String? updateDiag;
+
+String _why(Object e) {
+  final t = e.runtimeType.toString();
+  var m = e.toString();
+  if (m.length > 90) m = m.substring(0, 90);
+  return '$t: $m';
+}
+
 Future<UpdateInfo?> fetchUpdateInfo() async {
-  HttpClient? client;
+  updateDiag = null;
+  int mine = 0;
   try {
     final info = await PackageInfo.fromPlatform();
-    final mine = int.tryParse(info.buildNumber) ?? 0;
-    client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
+    mine = int.tryParse(info.buildNumber) ?? 0;
+  } catch (_) {}
+  // 1) GitHub API.
+  try {
+    return await _viaApi(mine);
+  } catch (e) {
+    updateDiag = 'API ${_why(e)}';
+  }
+  // 2) Plain website redirect (no API, no rate limit).
+  try {
+    return await _viaWeb(mine);
+  } catch (e) {
+    updateDiag = '${updateDiag ?? ''} | WEB ${_why(e)}';
+    return null;
+  }
+}
+
+String get _wantExt => Platform.isWindows ? '.zip' : '.apk';
+
+Future<UpdateInfo> _viaApi(int mine) async {
+  final client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
+  try {
     final req = await client.getUrl(Uri.parse(_releasesApi));
     req.headers.set('Accept', 'application/vnd.github+json');
     req.headers.set('User-Agent', 'bonnaya-app');
     final res = await req.close().timeout(const Duration(seconds: 12));
-    if (res.statusCode != 200) return null;
+    if (res.statusCode != 200) {
+      await res.drain<void>();
+      throw HttpException('status ${res.statusCode}');
+    }
     final body = await res.transform(utf8.decoder).join();
     final json = jsonDecode(body) as Map<String, dynamic>;
     final latest =
         int.tryParse((json['tag_name'] as String).replaceAll('build-', '')) ?? 0;
-    final want = Platform.isWindows ? '.zip' : '.apk';
     String? url;
     for (final a in (json['assets'] as List)) {
       final n = (a['name'] as String).toLowerCase();
-      if (n.endsWith(want)) url = a['browser_download_url'] as String;
+      if (n.endsWith(_wantExt)) url = a['browser_download_url'] as String;
     }
     return UpdateInfo(mine, latest, url);
-  } catch (_) {
-    return null;
   } finally {
-    client?.close();
+    client.close();
+  }
+}
+
+Future<UpdateInfo> _viaWeb(int mine) async {
+  final client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
+  try {
+    final req = await client
+        .getUrl(Uri.parse('https://github.com/ahmedtepry/Tomiha/releases/latest'));
+    req.followRedirects = false;
+    req.headers.set('User-Agent', 'bonnaya-app');
+    final res = await req.close().timeout(const Duration(seconds: 12));
+    await res.drain<void>();
+    final loc = res.headers.value('location') ?? '';
+    final m = RegExp(r'/releases/tag/(build-(\d+))').firstMatch(loc);
+    if (m == null) throw HttpException('status ${res.statusCode} $loc');
+    final tag = m.group(1)!;
+    final latest = int.parse(m.group(2)!);
+    final file = Platform.isWindows ? 'bonnaya-cashier-windows.zip' : 'bonnaya.apk';
+    return UpdateInfo(mine, latest,
+        'https://github.com/ahmedtepry/Tomiha/releases/download/$tag/$file');
+  } finally {
+    client.close();
   }
 }
 
@@ -195,8 +248,10 @@ Future<void> autoPatchNow(BuildContext context) async {
   final i = await fetchUpdateInfo();
   m.hideCurrentSnackBar();
   if (i == null) {
-    m.showSnackBar(const SnackBar(
-        content: Text('مقدرناش نوصل لسيرفر التحديثات. اتأكد من الإنترنت وجرّب تاني.')));
+    m.showSnackBar(SnackBar(
+        duration: const Duration(seconds: 12),
+        content: Text('مقدرناش نوصل لسيرفر التحديثات. اتأكد من الإنترنت وجرّب تاني.'
+            '${updateDiag == null ? '' : '\n(السبب: $updateDiag)'}')));
   } else if (i.available && i.url != null) {
     if (context.mounted) await installUpdate(context, i);
   } else {
