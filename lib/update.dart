@@ -15,7 +15,8 @@ class UpdateInfo {
   final int mine;
   final int latest;
   final String? url;
-  const UpdateInfo(this.mine, this.latest, this.url);
+  final String? fallbackUrl;
+  const UpdateInfo(this.mine, this.latest, this.url, [this.fallbackUrl]);
   bool get available => latest > mine && url != null;
 }
 
@@ -38,6 +39,13 @@ Future<UpdateInfo?> fetchUpdateInfo() async {
     final info = await PackageInfo.fromPlatform();
     mine = int.tryParse(info.buildNumber) ?? 0;
   } catch (_) {}
+  // 0) Our own server (works even where GitHub is blocked).
+  try {
+    final p = await _viaProxy(mine);
+    if (p != null) return p;
+  } catch (e) {
+    updateDiag = 'PROXY ${_why(e)}';
+  }
   // 1) GitHub API.
   try {
     return await _viaApi(mine);
@@ -54,6 +62,32 @@ Future<UpdateInfo?> fetchUpdateInfo() async {
 }
 
 String get _wantExt => Platform.isWindows ? '.zip' : '.apk';
+
+const _proxyBase = 'https://bfwydbseqkujqvnprtar.supabase.co/functions/v1/update-proxy';
+
+Future<UpdateInfo?> _viaProxy(int mine) async {
+  final client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
+  try {
+    final req = await client.getUrl(Uri.parse(_proxyBase));
+    final res = await req.close().timeout(const Duration(seconds: 12));
+    if (res.statusCode != 200) {
+      await res.drain<void>();
+      throw HttpException('status ${res.statusCode}');
+    }
+    final json = jsonDecode(await res.transform(utf8.decoder).join())
+        as Map<String, dynamic>;
+    final latest = json['build'] as int;
+    final tag = json['tag'] as String;
+    final file = Platform.isWindows ? 'bonnaya-cashier-windows.zip' : 'bonnaya.apk';
+    return UpdateInfo(
+        mine,
+        latest,
+        '$_proxyBase?file=${Platform.isWindows ? 'win' : 'apk'}',
+        'https://github.com/ahmedtepry/Tomiha/releases/download/$tag/$file');
+  } finally {
+    client.close();
+  }
+}
 
 Future<UpdateInfo> _viaApi(int mine) async {
   final client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
@@ -156,10 +190,19 @@ Future<void> installUpdate(BuildContext context, UpdateInfo i) async {
     file = File('${dir.path}${Platform.pathSeparator}'
         '${Platform.isWindows ? 'bonnaya-update.zip' : 'bonnaya-update.apk'}');
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 15);
-    final req = await client.getUrl(Uri.parse(i.url!));
-    req.headers.set('User-Agent', 'bonnaya-app');
-    final res = await req.close();
-    if (res.statusCode != 200) throw HttpException('status ${res.statusCode}');
+    HttpClientResponse res;
+    try {
+      final req = await client.getUrl(Uri.parse(i.url!));
+      req.headers.set('User-Agent', 'bonnaya-app');
+      res = await req.close();
+      if (res.statusCode != 200) throw HttpException('status ${res.statusCode}');
+    } catch (_) {
+      if (i.fallbackUrl == null) rethrow;
+      final req = await client.getUrl(Uri.parse(i.fallbackUrl!));
+      req.headers.set('User-Agent', 'bonnaya-app');
+      res = await req.close();
+      if (res.statusCode != 200) throw HttpException('status ${res.statusCode}');
+    }
     final total = res.contentLength;
     var got = 0;
     final sink = file.openWrite();
