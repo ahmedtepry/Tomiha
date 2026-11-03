@@ -4,6 +4,7 @@ import 'appearance.dart';
 import 'cashier.dart';
 import 'core.dart';
 import 'ops.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'update.dart';
 
 const jobLabels = {
@@ -152,7 +153,6 @@ class _AdminDashboardState extends State<AdminDashboard> {
         title: const Text('BONNAYA • لوحة تحكم المالك',
             style: TextStyle(fontWeight: FontWeight.w800)),
         actions: [
-          const VersionButton(),
           TextButton.icon(
               icon: const Icon(Icons.point_of_sale),
               label: const Text('شاشة البيع'),
@@ -191,6 +191,15 @@ class _AdminDashboardState extends State<AdminDashboard> {
                       onTap: () => setState(() => _i = k),
                     ),
                   ),
+                const Divider(height: 24, color: cHair),
+                FutureBuilder<PackageInfo>(
+                  future: PackageInfo.fromPlatform(),
+                  builder: (context, snap) => FilledButton.icon(
+                    icon: const Icon(Icons.system_update_alt),
+                    label: Text('تحديث البرنامج${snap.hasData ? ' • نسخة ${snap.data!.buildNumber}' : ''}'),
+                    onPressed: () => autoPatchNow(context),
+                  ),
+                ),
               ],
             ),
           ),

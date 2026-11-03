@@ -187,6 +187,23 @@ Future<void> manualUpdateCheck(BuildContext context) async {
   }
 }
 
+/// One tap: checks, and if a newer build exists downloads and installs it
+/// straight away (no confirmation). Used by the owner dashboard button.
+Future<void> autoPatchNow(BuildContext context) async {
+  final m = ScaffoldMessenger.of(context);
+  m.showSnackBar(const SnackBar(content: Text('بنشوف لو فيه تحديث...')));
+  final i = await fetchUpdateInfo();
+  m.hideCurrentSnackBar();
+  if (i == null) {
+    m.showSnackBar(const SnackBar(
+        content: Text('مقدرناش نوصل لسيرفر التحديثات. اتأكد من الإنترنت وجرّب تاني.')));
+  } else if (i.available && i.url != null) {
+    if (context.mounted) await installUpdate(context, i);
+  } else {
+    m.showSnackBar(SnackBar(content: Text('البرنامج على آخر نسخة (نسخة ${i.mine}).')));
+  }
+}
+
 /// Small "version + check for updates" button.
 class VersionButton extends StatelessWidget {
   const VersionButton({super.key});
