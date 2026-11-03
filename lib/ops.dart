@@ -25,12 +25,19 @@ class StoreStatus {
   final int openMin;
   final int closeMin;
   final bool forceClosed;
-  const StoreStatus(this.open, this.openMin, this.closeMin, this.forceClosed);
+  final int nowMin;
+  const StoreStatus(this.open, this.openMin, this.closeMin, this.forceClosed,
+      [this.nowMin = -1]);
 
   String get hoursText => 'من ${fmtMinutes(openMin)} لحد ${fmtMinutes(closeMin)}';
-  String get message => forceClosed
-      ? 'إحنا مقفولين دلوقتي. هنفتح قريب.'
-      : 'إحنا مقفولين دلوقتي. مواعيدنا $hoursText.';
+  String get message {
+    if (forceClosed) return 'الاستقبال واقف دلوقتي. هنرجع قريب.';
+    // Before opening time today: "not open yet". After closing: "closed for today".
+    if (nowMin >= 0 && nowMin < openMin) {
+      return 'لسه مفتحناش. بنفتح الساعة ${fmtMinutes(openMin)}.';
+    }
+    return 'قفلنا لليوم. بنفتح بكرة الساعة ${fmtMinutes(openMin)}، ومواعيدنا $hoursText.';
+  }
 }
 
 /// Asks the server whether the cart is taking orders right now. Null when unreachable.
@@ -42,6 +49,7 @@ Future<StoreStatus?> loadStoreStatus() async {
       (r['open_min'] as num).toInt(),
       (r['close_min'] as num).toInt(),
       (r['force_closed'] as bool?) ?? false,
+      (r['now_min'] as num?)?.toInt() ?? -1,
     );
   } catch (_) {
     return null;
