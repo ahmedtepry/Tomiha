@@ -207,6 +207,20 @@ class _OpenShiftPageState extends State<OpenShiftPage> {
   final _cash = TextEditingController(text: '0');
   final _pass = TextEditingController();
   bool _busy = false;
+  List<Map<String, dynamic>> _locs = [];
+  String? _loc;
+
+  @override
+  void initState() {
+    super.initState();
+    sb.from('locations').select('id, name').eq('active', true).order('created_at').then((r) {
+      if (!mounted) return;
+      setState(() {
+        _locs = (r as List).cast<Map<String, dynamic>>();
+        if (_locs.isNotEmpty) _loc = _locs.first['id'] as String;
+      });
+    }).catchError((_) {});
+  }
 
   @override
   void dispose() {
@@ -235,6 +249,7 @@ class _OpenShiftPageState extends State<OpenShiftPage> {
       await sb.from('shifts').insert({
         'cashier_id': sb.auth.currentUser!.id,
         'opening_cash': double.tryParse(_cash.text.trim()) ?? 0,
+        if (_loc != null) 'location_id': _loc,
       });
       try {
         final r = await sb.rpc('staff_check_in');
@@ -287,6 +302,18 @@ class _OpenShiftPageState extends State<OpenShiftPage> {
               const Text('اكتب الكاش اللي في الدرج وكلمة السر عشان نفتح الوردية.',
                   style: TextStyle(color: cMuted)),
               const SizedBox(height: 16),
+              if (_locs.length > 1) ...[
+                DropdownButtonFormField<String>(
+                  value: _loc,
+                  decoration: const InputDecoration(labelText: 'المكان'),
+                  items: [
+                    for (final l in _locs)
+                      DropdownMenuItem(value: l['id'] as String, child: Text('${l['name']}')),
+                  ],
+                  onChanged: (v) => setState(() => _loc = v),
+                ),
+                const SizedBox(height: 12),
+              ],
               TextField(
                 controller: _cash,
                 keyboardType: TextInputType.number,

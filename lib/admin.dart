@@ -123,6 +123,9 @@ class _AdminDashboardState extends State<AdminDashboard> {
     ('payroll', 'المرتبات', Icons.payments_outlined),
     ('expenses', 'المصروفات', Icons.receipt_long_outlined),
     ('offers', 'التوصيل والعروض', Icons.local_offer_outlined),
+    ('inventory', 'المخزون', Icons.inventory_2_outlined),
+    ('ratings', 'التقييمات', Icons.star_outline),
+    ('locations', 'الأماكن', Icons.storefront_outlined),
     ('reports', 'التقارير والفواتير', Icons.assessment_outlined),
     ('customers', 'العملاء', Icons.people_outline),
     ('audit', 'سجل التعديلات', Icons.history),
@@ -152,6 +155,12 @@ class _AdminDashboardState extends State<AdminDashboard> {
         return const _OffersSection();
       case 'audit':
         return const _AuditSection();
+      case 'inventory':
+        return const _InventorySection();
+      case 'ratings':
+        return const _RatingsSection();
+      case 'locations':
+        return const _LocationsSection();
       case 'expenses':
         return const _ExpensesSection();
       case 'reports':

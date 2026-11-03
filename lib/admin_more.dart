@@ -662,3 +662,438 @@ class _AccountPanelState extends State<_AccountPanel> {
     ]);
   }
 }
+
+
+// ---------------------------------------------------------------- inventory
+
+class _InventorySection extends StatefulWidget {
+  const _InventorySection();
+  @override
+  State<_InventorySection> createState() => _InventorySectionState();
+}
+
+class _InventorySectionState extends State<_InventorySection> {
+  late Future<List<Map<String, dynamic>>> _f = _load();
+
+  Future<List<Map<String, dynamic>>> _load() async {
+    final r = await sb.from('ingredients').select().eq('active', true).order('name');
+    return (r as List).cast<Map<String, dynamic>>();
+  }
+
+  void _reload() => setState(() => _f = _load());
+
+  Future<void> _edit([Map<String, dynamic>? ing]) async {
+    final name = TextEditingController(text: ing?['name'] as String? ?? '');
+    final unit = TextEditingController(text: ing?['unit'] as String? ?? 'جم');
+    final qty = TextEditingController(text: '${ing?['qty'] ?? 0}');
+    final min = TextEditingController(text: '${ing?['min_qty'] ?? 0}');
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(ing == null ? 'خامة جديدة' : 'تعديل ${ing['name']}'),
+        content: SizedBox(
+          width: 360,
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            TextField(controller: name, decoration: const InputDecoration(labelText: 'الاسم (بن، لبن، أكواب...)')),
+            TextField(controller: unit, decoration: const InputDecoration(labelText: 'الوحدة (جم، لتر، عدد)')),
+            TextField(
+                controller: qty,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: 'الكمية الموجودة (جرد)')),
+            TextField(
+                controller: min,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: 'نبّهني لما تقل عن')),
+          ]),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('إلغاء')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('حفظ')),
+        ],
+      ),
+    );
+    if (ok != true || name.text.trim().isEmpty) return;
+    final row = {
+      'name': name.text.trim(),
+      'unit': unit.text.trim().isEmpty ? 'جم' : unit.text.trim(),
+      'qty': double.tryParse(qty.text.trim()) ?? 0,
+      'min_qty': double.tryParse(min.text.trim()) ?? 0,
+    };
+    try {
+      if (ing == null) {
+        await sb.from('ingredients').insert(row);
+      } else {
+        await sb.from('ingredients').update(row).eq('id', ing['id']);
+      }
+      _reload();
+    } catch (e) {
+      if (mounted) showError(context, e);
+    }
+  }
+
+  Future<void> _hide(Map<String, dynamic> ing) async {
+    try {
+      await sb.from('ingredients').update({'active': false}).eq('id', ing['id']);
+      _reload();
+    } catch (e) {
+      if (mounted) showError(context, e);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<List<Map<String, dynamic>>>(
+      future: _f,
+      builder: (context, snap) {
+        if (snap.connectionState != ConnectionState.done) return _loading();
+        if (snap.hasError) return _problem(snap.error!, _reload);
+        final rows = snap.data!;
+        final low = rows.where((r) => _n(r['qty']) <= _n(r['min_qty'])).toList();
+        return ListView(padding: const EdgeInsets.all(16), children: [
+          Row(children: [
+            const Expanded(
+                child: Text('المخزون',
+                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800))),
+            OutlinedButton.icon(
+                onPressed: () => showDialog<void>(
+                    context: context, builder: (_) => const _RecipesDialog()),
+                icon: const Icon(Icons.menu_book_outlined),
+                label: const Text('الوصفات')),
+            const SizedBox(width: 8),
+            FilledButton.icon(
+                onPressed: () => _edit(),
+                icon: const Icon(Icons.add),
+                label: const Text('خامة جديدة')),
+          ]),
+          const Text('كل بيعة بتنقّص الخامات حسب الوصفة، ولو الفاتورة اتلغت الكمية بترجع.',
+              style: TextStyle(color: cMuted)),
+          const SizedBox(height: 10),
+          if (low.isNotEmpty)
+            _Panel(
+              title: 'قربت تخلص',
+              child: Wrap(spacing: 8, children: [
+                for (final r in low)
+                  Chip(
+                      backgroundColor: cDanger.withValues(alpha: 0.12),
+                      label: Text('${r['name']}: ${_n(r['qty'])} ${r['unit']}')),
+              ]),
+            ),
+          if (rows.isEmpty) const Text('لسه مفيش خامات.', style: TextStyle(color: cMuted)),
+          for (final r in rows)
+            Card(
+              child: ListTile(
+                title: Text('${r['name']}', style: const TextStyle(fontWeight: FontWeight.w800)),
+                subtitle: Text('الموجود: ${_n(r['qty'])} ${r['unit']} • تنبيه تحت ${_n(r['min_qty'])}'),
+                leading: Icon(
+                    _n(r['qty']) <= _n(r['min_qty']) ? Icons.warning_amber_rounded : Icons.inventory_2_outlined,
+                    color: _n(r['qty']) <= _n(r['min_qty']) ? cDanger : cBrand),
+                trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                  IconButton(tooltip: 'جرد / تعديل', icon: const Icon(Icons.edit_outlined), onPressed: () => _edit(r)),
+                  IconButton(tooltip: 'إخفاء', icon: const Icon(Icons.visibility_off_outlined), onPressed: () => _hide(r)),
+                ]),
+              ),
+            ),
+        ]);
+      },
+    );
+  }
+}
+
+class _RecipesDialog extends StatefulWidget {
+  const _RecipesDialog();
+  @override
+  State<_RecipesDialog> createState() => _RecipesDialogState();
+}
+
+class _RecipesDialogState extends State<_RecipesDialog> {
+  List<Map<String, dynamic>> _drinks = [];
+  List<Map<String, dynamic>> _ings = [];
+  List<Map<String, dynamic>> _rows = [];
+  String? _drink;
+  String? _ing;
+  String? _size;
+  final _amount = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _init();
+  }
+
+  @override
+  void dispose() {
+    _amount.dispose();
+    super.dispose();
+  }
+
+  Future<void> _init() async {
+    try {
+      final d = await sb.from('drinks').select('id, name').eq('active', true).order('name');
+      final i = await sb.from('ingredients').select('id, name, unit').eq('active', true).order('name');
+      if (!mounted) return;
+      setState(() {
+        _drinks = (d as List).cast<Map<String, dynamic>>();
+        _ings = (i as List).cast<Map<String, dynamic>>();
+      });
+    } catch (e) {
+      if (mounted) showError(context, e);
+    }
+  }
+
+  Future<void> _loadRows() async {
+    if (_drink == null) return;
+    try {
+      final r = await sb.from('recipe_items').select().eq('drink_id', _drink!);
+      if (mounted) setState(() => _rows = (r as List).cast<Map<String, dynamic>>());
+    } catch (e) {
+      if (mounted) showError(context, e);
+    }
+  }
+
+  String _ingName(String id) => _ings.firstWhere((x) => x['id'] == id, orElse: () => {'name': '?', 'unit': ''})['name'] as String;
+
+  Future<void> _add() async {
+    final a = double.tryParse(_amount.text.trim());
+    if (_drink == null || _ing == null || a == null || a <= 0) {
+      showError(context, 'اختار المنتج والخامة واكتب الكمية.');
+      return;
+    }
+    try {
+      await sb.from('recipe_items').insert({
+        'drink_id': _drink,
+        'ingredient_id': _ing,
+        'size': _size,
+        'amount': a,
+      });
+      _amount.clear();
+      _loadRows();
+    } catch (e) {
+      if (mounted) showError(context, e);
+    }
+  }
+
+  Future<void> _remove(Map<String, dynamic> r) async {
+    try {
+      await sb.from('recipe_items').delete().eq('id', r['id']);
+      _loadRows();
+    } catch (e) {
+      if (mounted) showError(context, e);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('وصفات المنتجات'),
+      content: SizedBox(
+        width: 460,
+        child: SingleChildScrollView(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            DropdownButtonFormField<String>(
+              value: _drink,
+              decoration: const InputDecoration(labelText: 'المنتج'),
+              items: [for (final d in _drinks) DropdownMenuItem(value: d['id'] as String, child: Text('${d['name']}'))],
+              onChanged: (v) {
+                setState(() {
+                  _drink = v;
+                  _rows = [];
+                });
+                _loadRows();
+              },
+            ),
+            const SizedBox(height: 8),
+            for (final r in _rows)
+              ListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                title: Text('${_ingName(r['ingredient_id'] as String)}: ${_n(r['amount'])}'),
+                subtitle: Text(r['size'] == null ? 'كل المقاسات' : (sizeLabel[r['size']] ?? '${r['size']}')),
+                trailing: IconButton(icon: const Icon(Icons.delete_outline), onPressed: () => _remove(r)),
+              ),
+            if (_drink != null) ...[
+              const Divider(),
+              DropdownButtonFormField<String>(
+                value: _ing,
+                decoration: const InputDecoration(labelText: 'الخامة'),
+                items: [for (final i in _ings) DropdownMenuItem(value: i['id'] as String, child: Text('${i['name']} (${i['unit']})'))],
+                onChanged: (v) => setState(() => _ing = v),
+              ),
+              DropdownButtonFormField<String?>(
+                value: _size,
+                decoration: const InputDecoration(labelText: 'المقاس'),
+                items: [
+                  const DropdownMenuItem<String?>(value: null, child: Text('كل المقاسات')),
+                  for (final e in sizeLabel.entries) DropdownMenuItem<String?>(value: e.key, child: Text(e.value)),
+                ],
+                onChanged: (v) => setState(() => _size = v),
+              ),
+              TextField(
+                  controller: _amount,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(labelText: 'الكمية للكوباية الواحدة')),
+              const SizedBox(height: 8),
+              FilledButton(onPressed: _add, child: const Text('أضف للوصفة')),
+            ],
+          ]),
+        ),
+      ),
+      actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('تمام'))],
+    );
+  }
+}
+
+// ------------------------------------------------------------------ ratings
+
+class _RatingsSection extends StatefulWidget {
+  const _RatingsSection();
+  @override
+  State<_RatingsSection> createState() => _RatingsSectionState();
+}
+
+class _RatingsSectionState extends State<_RatingsSection> {
+  late Future<List<Map<String, dynamic>>> _f = _load();
+
+  Future<List<Map<String, dynamic>>> _load() async {
+    final r = await sb.from('order_ratings').select().order('created_at', ascending: false).limit(200);
+    return (r as List).cast<Map<String, dynamic>>();
+  }
+
+  void _reload() => setState(() => _f = _load());
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<List<Map<String, dynamic>>>(
+      future: _f,
+      builder: (context, snap) {
+        if (snap.connectionState != ConnectionState.done) return _loading();
+        if (snap.hasError) return _problem(snap.error!, _reload);
+        final rows = snap.data!;
+        final avg = rows.isEmpty
+            ? 0.0
+            : rows.fold<double>(0, (s, r) => s + _n(r['stars']).toDouble()) / rows.length;
+        return ListView(padding: const EdgeInsets.all(16), children: [
+          Row(children: [
+            const Expanded(
+                child: Text('تقييمات العملاء',
+                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800))),
+            IconButton(onPressed: _reload, icon: const Icon(Icons.refresh)),
+          ]),
+          _Kpi('متوسط التقييم (${rows.length} تقييم)', rows.isEmpty ? '-' : '${avg.toStringAsFixed(1)} / 5'),
+          const SizedBox(height: 10),
+          if (rows.isEmpty) const Text('لسه مفيش تقييمات.', style: TextStyle(color: cMuted)),
+          for (final r in rows)
+            Card(
+              child: ListTile(
+                title: Text('★' * (_n(r['stars']).toInt()) + '☆' * (5 - _n(r['stars']).toInt()),
+                    style: const TextStyle(color: cGold, fontSize: 18)),
+                subtitle: Text(
+                    '${(r['comment'] as String?) ?? ''}${(r['comment'] as String?)?.isNotEmpty == true ? '\n' : ''}${fmtTime(r['created_at'] as String)}'),
+              ),
+            ),
+        ]);
+      },
+    );
+  }
+}
+
+// ---------------------------------------------------------------- locations
+
+class _LocationsSection extends StatefulWidget {
+  const _LocationsSection();
+  @override
+  State<_LocationsSection> createState() => _LocationsSectionState();
+}
+
+class _LocationsSectionState extends State<_LocationsSection> {
+  late Future<Map<String, dynamic>> _f = _load();
+
+  Future<Map<String, dynamic>> _load() async {
+    final now = DateTime.now();
+    final l = await sb.from('locations').select().order('created_at');
+    final s = await sb.rpc('owner_by_location', params: {
+      'p_from': _ymd(DateTime(now.year, now.month, 1)),
+      'p_to': _ymd(now),
+    });
+    return {'locations': l, 'sales': s};
+  }
+
+  void _reload() => setState(() => _f = _load());
+
+  Future<void> _add() async {
+    final c = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('مكان / عربية جديدة'),
+        content: TextField(controller: c, decoration: const InputDecoration(labelText: 'الاسم')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('إلغاء')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('إضافة')),
+        ],
+      ),
+    );
+    if (ok != true || c.text.trim().isEmpty) return;
+    try {
+      await sb.from('locations').insert({'name': c.text.trim()});
+      _reload();
+    } catch (e) {
+      if (mounted) showError(context, e);
+    }
+  }
+
+  Future<void> _toggle(Map l) async {
+    try {
+      await sb.from('locations').update({'active': !(l['active'] as bool)}).eq('id', l['id']);
+      _reload();
+    } catch (e) {
+      if (mounted) showError(context, e);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<Map<String, dynamic>>(
+      future: _f,
+      builder: (context, snap) {
+        if (snap.connectionState != ConnectionState.done) return _loading();
+        if (snap.hasError) return _problem(snap.error!, _reload);
+        final locs = (snap.data!['locations'] as List).cast<Map<String, dynamic>>();
+        final sales = (snap.data!['sales'] as List).cast<Map<String, dynamic>>();
+        return ListView(padding: const EdgeInsets.all(16), children: [
+          Row(children: [
+            const Expanded(
+                child: Text('الأماكن',
+                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800))),
+            FilledButton.icon(onPressed: _add, icon: const Icon(Icons.add), label: const Text('مكان جديد')),
+          ]),
+          const Text('لما يبقى عندك أكتر من مكان، البائع بيختار مكانه وهو بيفتح الوردية.',
+              style: TextStyle(color: cMuted)),
+          const SizedBox(height: 10),
+          _Panel(
+            title: 'مبيعات الشهر لكل مكان',
+            child: Column(children: [
+              if (sales.isEmpty) const Text('لسه مفيش مبيعات.', style: TextStyle(color: cMuted)),
+              for (final r in sales)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Row(children: [
+                    Expanded(child: Text('${r['location']}')),
+                    Text('${r['orders']} أوردر  •  ', style: const TextStyle(color: cMuted)),
+                    Text(money(_n(r['sales'])), style: const TextStyle(fontWeight: FontWeight.w800)),
+                  ]),
+                ),
+            ]),
+          ),
+          for (final l in locs)
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.storefront_outlined),
+                title: Text('${l['name']}', style: const TextStyle(fontWeight: FontWeight.w700)),
+                trailing: Switch(value: l['active'] as bool, onChanged: (_) => _toggle(l)),
+              ),
+            ),
+        ]);
+      },
+    );
+  }
+}

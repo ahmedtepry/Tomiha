@@ -1205,6 +1205,7 @@ class _TrackPageState extends State<TrackPage> {
             ],
           ),
         ),
+        if (status == 'delivered') RatingBox(orderId: widget.orderId),
         if (status == 'pending_payment')
           Padding(
             padding: const EdgeInsets.only(top: 12),
@@ -1445,6 +1446,98 @@ class _OrdersPageState extends State<OrdersPage> {
           );
         },
       ),
+    );
+  }
+}
+
+
+/// Stars + comment after delivery. Saved once per order.
+class RatingBox extends StatefulWidget {
+  final String orderId;
+  const RatingBox({super.key, required this.orderId});
+  @override
+  State<RatingBox> createState() => _RatingBoxState();
+}
+
+class _RatingBoxState extends State<RatingBox> {
+  int _stars = 0;
+  bool _sent = false;
+  bool _busy = false;
+  bool _checked = false;
+  final _comment = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    sb.from('order_ratings').select('stars').eq('order_id', widget.orderId).maybeSingle().then((r) {
+      if (mounted) {
+        setState(() {
+          _checked = true;
+          if (r != null) {
+            _sent = true;
+            _stars = (r['stars'] as num).toInt();
+          }
+        });
+      }
+    }).catchError((_) {
+      if (mounted) setState(() => _checked = true);
+    });
+  }
+
+  @override
+  void dispose() {
+    _comment.dispose();
+    super.dispose();
+  }
+
+  Future<void> _send() async {
+    if (_stars == 0 || _busy) return;
+    setState(() => _busy = true);
+    try {
+      await sb.rpc('rate_order', params: {
+        'p_order': widget.orderId,
+        'p_stars': _stars,
+        'p_comment': _comment.text.trim().isEmpty ? null : _comment.text.trim(),
+      });
+      if (mounted) setState(() => _sent = true);
+    } catch (e) {
+      if (mounted) showError(context, e);
+    }
+    if (mounted) setState(() => _busy = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_checked) return const SizedBox.shrink();
+    return Container(
+      margin: const EdgeInsets.only(top: 14),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: cCream2,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: cHair),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Text(_sent ? 'شكراً على تقييمك!' : 'قيّم طلبك',
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+        const SizedBox(height: 6),
+        Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          for (var i = 1; i <= 5; i++)
+            IconButton(
+              onPressed: _sent ? null : () => setState(() => _stars = i),
+              icon: Icon(i <= _stars ? Icons.star : Icons.star_border, color: cGold, size: 34),
+            ),
+        ]),
+        if (!_sent) ...[
+          TextField(
+              controller: _comment,
+              maxLength: 300,
+              decoration: const InputDecoration(labelText: 'عايز تقولنا حاجة؟ (اختياري)')),
+          FilledButton(
+              onPressed: _stars == 0 || _busy ? null : _send, child: const Text('ابعت التقييم')),
+        ],
+      ]),
     );
   }
 }
