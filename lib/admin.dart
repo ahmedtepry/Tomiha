@@ -14,14 +14,7 @@ const jobLabels = {
   'reception': 'استقبال أونلاين',
 };
 
-const _catNames = {
-  'snacks': 'سناكس',
-  'crackers': 'مقرمشات',
-  'hot': 'مشروبات ساخنة',
-  'cold': 'مشروبات باردة',
-  'sandwiches': 'سندوتشات',
-  'chocolate': 'كورنر الشوكولاتة',
-};
+Map<String, String> get _catNames => {for (final c in menuCategories) c.id: c.name};
 
 const _expenseCats = {
   'stock': 'مواد خام',
@@ -315,6 +308,7 @@ class _ProductsSectionState extends State<_ProductsSection> {
   late Future<List<Map<String, dynamic>>> _f = _load();
 
   Future<List<Map<String, dynamic>>> _load() async {
+    await fetchCategories();
     final r = await sb
         .from('drinks')
         .select('id, name, category, active, base_cost, sort_order, drink_prices(size, price)')
@@ -390,6 +384,15 @@ class _ProductsSectionState extends State<_ProductsSection> {
               const Text('المنتجات',
                   style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800)),
               const Spacer(),
+              OutlinedButton.icon(
+                  onPressed: () async {
+                    await showDialog<void>(
+                        context: context, builder: (_) => const _CategoriesDialog());
+                    _reload();
+                  },
+                  icon: const Icon(Icons.category_outlined),
+                  label: const Text('الأقسام')),
+              const SizedBox(width: 8),
               FilledButton.icon(
                   onPressed: () => _edit(null, next),
                   icon: const Icon(Icons.add),
@@ -1701,6 +1704,156 @@ class _SettingsSectionState extends State<_SettingsSection> {
           ),
         ]);
       },
+    );
+  }
+}
+
+
+/// Owner: add, rename and remove menu categories.
+class _CategoriesDialog extends StatefulWidget {
+  const _CategoriesDialog();
+  @override
+  State<_CategoriesDialog> createState() => _CategoriesDialogState();
+}
+
+class _CategoriesDialogState extends State<_CategoriesDialog> {
+  bool busy = false;
+
+  Future<void> _run(Future<void> Function() f) async {
+    setState(() => busy = true);
+    try {
+      await f();
+      await fetchCategories();
+    } catch (e) {
+      if (mounted) showError(context, e);
+    }
+    if (mounted) setState(() => busy = false);
+  }
+
+  Future<void> _edit(MenuCategory? c) async {
+    final name = TextEditingController(text: c?.name ?? '');
+    var icon = c?.icon ?? 'restaurant';
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, set) => AlertDialog(
+          title: Text(c == null ? 'قسم جديد' : 'تعديل القسم'),
+          content: SizedBox(
+            width: 380,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextField(
+                    controller: name,
+                    autofocus: true,
+                    decoration: const InputDecoration(labelText: 'اسم القسم')),
+                const SizedBox(height: 14),
+                const Text('الأيقونة', style: TextStyle(color: cMuted)),
+                const SizedBox(height: 6),
+                Wrap(spacing: 8, runSpacing: 8, children: [
+                  for (final e in categoryIcons.entries)
+                    ChoiceChip(
+                      label: Icon(e.value, size: 22),
+                      selected: icon == e.key,
+                      selectedColor: cGold,
+                      onSelected: (_) => set(() => icon = e.key),
+                    ),
+                ]),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('إلغاء')),
+            FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('حفظ')),
+          ],
+        ),
+      ),
+    );
+    final n = name.text.trim();
+    if (ok != true || n.isEmpty) return;
+    await _run(() async {
+      if (c == null) {
+        final id = 'c${DateTime.now().millisecondsSinceEpoch}';
+        await sb.from('menu_categories').insert({
+          'id': id,
+          'name': n,
+          'icon': icon,
+          'sort_order': menuCategories.length + 1,
+        });
+      } else {
+        await sb
+            .from('menu_categories')
+            .update({'name': n, 'icon': icon}).eq('id', c.id);
+      }
+    });
+  }
+
+  Future<void> _delete(MenuCategory c) async {
+    final used = await sb.from('drinks').select('id').eq('category', c.id).limit(1);
+    if (!mounted) return;
+    if ((used as List).isNotEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('القسم فيه منتجات. انقلها لقسم تاني الأول وبعدين امسحه.')));
+      return;
+    }
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('تمسح قسم "${c.name}"؟'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false), child: const Text('لأ')),
+          FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: cDanger),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('امسح')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    await _run(() => sb.from('menu_categories').delete().eq('id', c.id));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('أقسام المنيو'),
+      content: SizedBox(
+        width: 420,
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            for (final c in menuCategories)
+              ListTile(
+                leading: Icon(c.iconData),
+                title: Text(c.name),
+                trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                  IconButton(
+                      tooltip: 'تعديل الاسم والأيقونة',
+                      icon: const Icon(Icons.edit_outlined),
+                      onPressed: busy ? null : () => _edit(c)),
+                  IconButton(
+                      tooltip: 'مسح',
+                      icon: const Icon(Icons.delete_outline),
+                      onPressed: busy ? null : () => _delete(c)),
+                ]),
+              ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton.icon(
+            onPressed: busy ? null : () => _edit(null),
+            icon: const Icon(Icons.add),
+            label: const Text('قسم جديد')),
+        FilledButton(
+            onPressed: () => Navigator.pop(context), child: const Text('تمام')),
+      ],
     );
   }
 }

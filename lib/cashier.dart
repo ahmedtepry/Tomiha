@@ -1050,7 +1050,7 @@ class _PosPanelState extends State<PosPanel> {
     final list = cat == 'all'
         ? menu.drinks
         : menu.drinks.where((x) => x.category == cat).toList();
-    final title = _posCats.firstWhere((c) => c.$1 == cat).$2;
+    final title = _posCats.firstWhere((c) => c.$1 == cat, orElse: () => _posCats.first).$2;
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -1181,15 +1181,10 @@ class _PosPanelState extends State<PosPanel> {
   }
 }
 
-const _posCats = <(String, String, IconData)>[
-  ('all', 'الكل', Icons.apps),
-  ('hot', 'مشروبات ساخنة', Icons.coffee_outlined),
-  ('cold', 'مشروبات باردة', Icons.local_drink_outlined),
-  ('chocolate', 'كورنر الشوكولاتة', Icons.icecream_outlined),
-  ('snacks', 'سناكس', Icons.cookie_outlined),
-  ('crackers', 'مقرمشات', Icons.bakery_dining_outlined),
-  ('sandwiches', 'سندوتشات', Icons.lunch_dining_outlined),
-];
+List<(String, String, IconData)> get _posCats => [
+      ('all', 'الكل', Icons.apps),
+      for (final c in menuCategories) (c.id, c.name, c.iconData),
+    ];
 
 /// Opens when a product is tapped: shows its price, options, extras and quantity.
 class _ItemDialog extends StatefulWidget {

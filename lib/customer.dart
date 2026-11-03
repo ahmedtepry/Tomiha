@@ -204,22 +204,6 @@ class _HomePageState extends State<HomePage> {
   }
 }
 
-class MenuCategory {
-  final String id;
-  final String name;
-  final IconData icon;
-  const MenuCategory(this.id, this.name, this.icon);
-}
-
-const menuCategories = [
-  MenuCategory('snacks', 'سناكس', Icons.cookie_outlined),
-  MenuCategory('crackers', 'مقرمشات', Icons.bakery_dining_outlined),
-  MenuCategory('hot', 'مشروبات ساخنة', Icons.coffee_outlined),
-  MenuCategory('cold', 'مشروبات باردة', Icons.local_drink_outlined),
-  MenuCategory('sandwiches', 'سندوتشات', Icons.lunch_dining_outlined),
-  MenuCategory('chocolate', 'كورنر الشوكولاتة', Icons.icecream_outlined),
-];
-
 class _CategoryCard extends StatelessWidget {
   final MenuCategory cat;
   final int count;
@@ -246,7 +230,7 @@ class _CategoryCard extends StatelessWidget {
                 radius: 24,
                 backgroundColor: cCream,
                 foregroundColor: cBrand,
-                child: Icon(cat.icon, size: 26),
+                child: Icon(cat.iconData, size: 26),
               ),
               const SizedBox(height: 10),
               Text(cat.name,
@@ -422,7 +406,7 @@ class _PopularCard extends StatelessWidget {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(cat.icon, color: cBrand, size: 30),
+                  Icon(cat.iconData, color: cBrand, size: 30),
                   const SizedBox(height: 6),
                   Text(drink.name,
                       textAlign: TextAlign.center,

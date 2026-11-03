@@ -354,7 +354,63 @@ class Menu {
   Menu(this.drinks, this.addons);
 }
 
+class MenuCategory {
+  final String id;
+  final String name;
+  final String icon;
+  const MenuCategory(this.id, this.name, this.icon);
+  IconData get iconData => categoryIcons[icon] ?? Icons.restaurant_outlined;
+}
+
+/// Icons the owner can pick for a category.
+const categoryIcons = <String, IconData>{
+  'coffee': Icons.coffee_outlined,
+  'drink': Icons.local_drink_outlined,
+  'icecream': Icons.icecream_outlined,
+  'cookie': Icons.cookie_outlined,
+  'bakery': Icons.bakery_dining_outlined,
+  'lunch': Icons.lunch_dining_outlined,
+  'cake': Icons.cake_outlined,
+  'pizza': Icons.local_pizza_outlined,
+  'fastfood': Icons.fastfood_outlined,
+  'tea': Icons.emoji_food_beverage_outlined,
+  'restaurant': Icons.restaurant_outlined,
+  'star': Icons.star_outline,
+};
+
+const _defaultCategories = [
+  MenuCategory('hot', 'مشروبات ساخنة', 'coffee'),
+  MenuCategory('cold', 'مشروبات باردة', 'drink'),
+  MenuCategory('chocolate', 'كورنر الشوكولاتة', 'icecream'),
+  MenuCategory('snacks', 'سناكس', 'cookie'),
+  MenuCategory('crackers', 'مقرمشات', 'bakery'),
+  MenuCategory('sandwiches', 'سندوتشات', 'lunch'),
+];
+
+/// The current categories (updated whenever the menu or the owner's list loads).
+List<MenuCategory> menuCategories = _defaultCategories;
+
+Future<List<MenuCategory>> fetchCategories() async {
+  try {
+    final r = await sb
+        .from('menu_categories')
+        .select('id, name, icon')
+        .eq('active', true)
+        .order('sort_order')
+        .order('name');
+    final l = (r as List)
+        .map((e) => MenuCategory(
+            e['id'] as String, e['name'] as String, (e['icon'] as String?) ?? 'restaurant'))
+        .toList();
+    if (l.isNotEmpty) menuCategories = l;
+  } catch (e) {
+    if (isNetworkError(e)) rethrow;
+  }
+  return menuCategories;
+}
+
 Future<Menu> loadMenu() async {
+  await fetchCategories();
   final d = await sb
       .from('drinks')
       .select('id, name, category, drink_prices(size, price)')
