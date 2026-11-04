@@ -912,7 +912,9 @@ class _CartPageState extends State<CartPage> {
                       keyboardType: TextInputType.phone,
                       textDirection: TextDirection.ltr,
                       decoration: const InputDecoration(
-                          labelText: 'رقم المحفظة اللي حوّلت منها'),
+                          labelText: 'رقم المحفظة اللي حوّلت منها',
+                          hintText: 'مثلاً 01xxxxxxxxx',
+                          prefixIcon: Icon(Icons.phone_android)),
                     ),
                     const SizedBox(height: 8),
                     const Text(

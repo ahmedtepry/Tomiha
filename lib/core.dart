@@ -176,10 +176,22 @@ ThemeData nasyaTheme() {
     ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
-      fillColor: cCream2,
+      fillColor: const Color(0xFF110B09),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+      labelStyle: const TextStyle(color: cMuted),
+      floatingLabelStyle: const TextStyle(color: cBrand, fontWeight: FontWeight.w700),
+      hintStyle: const TextStyle(color: cMuted),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),
-        borderSide: BorderSide.none,
+        borderSide: const BorderSide(color: Color(0xFF6A5448), width: 1.5),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: const BorderSide(color: Color(0xFF6A5448), width: 1.5),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: const BorderSide(color: cBrand, width: 2),
       ),
     ),
     filledButtonTheme: FilledButtonThemeData(
