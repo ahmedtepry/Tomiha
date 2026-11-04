@@ -640,6 +640,7 @@ class _CartPageState extends State<CartPage> {
   Address? _saved;
   ({String number, String name}) _wallet = (number: '', name: '');
   final _payRef = TextEditingController();
+  final _payFocus = FocusNode();
   bool busy = false;
   // True after the customer pressed send but the connection was down: we send by ourselves
   // as soon as it returns. The same request id guarantees one order even if we retry.
@@ -705,6 +706,7 @@ class _CartPageState extends State<CartPage> {
     _coupon.dispose();
     net.removeListener(_onNet);
     _payRef.dispose();
+    _payFocus.dispose();
     super.dispose();
   }
 
@@ -766,6 +768,7 @@ class _CartPageState extends State<CartPage> {
       return;
     }
     if (_payRef.text.trim().isEmpty) {
+      _payFocus.requestFocus();
       showError(context, 'اكتب رقم المحفظة اللي حوّلت منها، عشان نتأكد من التحويل.');
       return;
     }
@@ -881,7 +884,7 @@ class _CartPageState extends State<CartPage> {
                     Text(
                       _wallet.number.isEmpty
                           ? 'حوّل ${money(_total)} على المحفظة، وبعدين اكتب رقم المحفظة اللي حوّلت منها. هنبعتلك رقم المحفظة أول ما تبعت الطلب.'
-                          : 'حوّل ${money(_total)} على المحفظة رقم:',
+                          : 'الأول: حوّل ${money(_total)} على المحفظة رقم:',
                       style: const TextStyle(color: cMuted, height: 1.6),
                     ),
                     if (_wallet.number.isNotEmpty) ...[
@@ -906,15 +909,47 @@ class _CartPageState extends State<CartPage> {
                         },
                       ),
                     ],
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: _payRef,
-                      keyboardType: TextInputType.phone,
-                      textDirection: TextDirection.ltr,
-                      decoration: const InputDecoration(
-                          labelText: 'رقم المحفظة اللي حوّلت منها',
-                          hintText: 'مثلاً 01xxxxxxxxx',
-                          prefixIcon: Icon(Icons.phone_android)),
+                    const SizedBox(height: 14),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: cBrand.withValues(alpha: 0.10),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                            color: _payRef.text.trim().isEmpty ? cBrand : cGreen, width: 2),
+                      ),
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Row(children: [
+                          Container(
+                            width: 24,
+                            height: 24,
+                            alignment: Alignment.center,
+                            decoration: const BoxDecoration(color: cBrand, shape: BoxShape.circle),
+                            child: const Text('2',
+                                style: TextStyle(
+                                    color: cOnBrand, fontWeight: FontWeight.w900)),
+                          ),
+                          const SizedBox(width: 8),
+                          const Expanded(
+                            child: Text('بعد التحويل: اكتب رقمك اللي حوّلت منه (مطلوب)',
+                                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+                          ),
+                        ]),
+                        const SizedBox(height: 4),
+                        const Text('عشان نعرف نتأكد إن التحويل بتاعك.',
+                            style: TextStyle(color: cMuted, fontSize: 13)),
+                        const SizedBox(height: 10),
+                        TextField(
+                          controller: _payRef,
+                          focusNode: _payFocus,
+                          keyboardType: TextInputType.phone,
+                          textDirection: TextDirection.ltr,
+                          onChanged: (_) => setState(() {}),
+                          decoration: const InputDecoration(
+                              hintText: '01xxxxxxxxx',
+                              prefixIcon: Icon(Icons.phone_android)),
+                        ),
+                      ]),
                     ),
                     const SizedBox(height: 8),
                     const Text(
@@ -1104,7 +1139,11 @@ class _CartPageState extends State<CartPage> {
                 child: Text(
                     (_store != null && !_store!.open)
                         ? 'لسه مقفول'
-                        : (waiting ? 'استنى النت وابعت' : 'أكّد الطلب'),
+                        : (waiting
+                            ? 'استنى النت وابعت'
+                            : (_payRef.text.trim().isEmpty
+                                ? 'اكتب رقم المحفظة اللي حوّلت منها'
+                                : 'أكّد الطلب')),
                     style: const TextStyle(fontSize: 17)),
               ),
             ]),
