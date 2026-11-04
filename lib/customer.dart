@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show AuthState;
 
 import 'core.dart';
@@ -662,6 +663,7 @@ class _CartPageState extends State<CartPage> {
         final ce = q['coupon_error'] as String?;
         _couponErr = ce == null ? null : errorText(Exception(ce));
         if (ce != null) _appliedCoupon = '';
+        if (ce == null && _appliedCoupon.isNotEmpty) _couponOpen = false;
       });
     } catch (_) {}
   }
@@ -808,6 +810,7 @@ class _CartPageState extends State<CartPage> {
         ),
         title: const Text('طلبك'),
       ),
+      bottomNavigationBar: _bottomBar(),
       body: ListenableBuilder(
         listenable: cart,
         builder: (context, _) {
@@ -819,6 +822,7 @@ class _CartPageState extends State<CartPage> {
             children: [
               if (_store != null && !_store!.open) ClosedBanner(status: _store!),
               for (var i = 0; i < cart.lines.length; i++) _line(i),
+              _extras(),
               const SectionLabel('عنوان التوصيل'),
               Container(
                 padding: const EdgeInsets.all(14),
@@ -852,8 +856,6 @@ class _CartPageState extends State<CartPage> {
                   ],
                 ),
               ),
-              const SectionLabel('كوبون ونقاط'),
-              _extras(),
               const SectionLabel('الدفع'),
               Container(
                 padding: const EdgeInsets.all(14),
@@ -889,6 +891,16 @@ class _CartPageState extends State<CartPage> {
                       if (_wallet.name.isNotEmpty)
                         Text(_wallet.name,
                             style: const TextStyle(color: cMuted)),
+                      const SizedBox(height: 6),
+                      OutlinedButton.icon(
+                        icon: const Icon(Icons.copy, size: 18),
+                        label: const Text('انسخ الرقم'),
+                        onPressed: () {
+                          Clipboard.setData(ClipboardData(text: _wallet.number));
+                          ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('اتنسخ الرقم.')));
+                        },
+                      ),
                     ],
                     const SizedBox(height: 12),
                     TextField(
@@ -906,39 +918,7 @@ class _CartPageState extends State<CartPage> {
                   ],
                 ),
               ),
-              const SizedBox(height: 24),
-              if (waiting)
-                Container(
-                  margin: const EdgeInsets.only(bottom: 12),
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: cCream2,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: cGold, width: 2),
-                  ),
-                  child: const Row(
-                    children: [
-                      Icon(Icons.wifi_off, color: cMuted),
-                      SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          'مفيش إنترنت دلوقتي. طلبك محفوظ وهيتبعت لوحده أول ما النت يرجع، متقفلش الصفحة.',
-                          style: TextStyle(fontWeight: FontWeight.w600),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              FilledButton(
-                style: FilledButton.styleFrom(
-                    minimumSize: const Size.fromHeight(56)),
-                onPressed: busy || (_store != null && !_store!.open) || _belowMin ? null : _place,
-                child: Text(
-                    waiting
-                        ? 'استنى النت وابعت  •  ${money(_total)}'
-                        : 'اتحوّل؟ ابعت الطلب  •  ${money(_total)}',
-                    style: const TextStyle(fontSize: 17)),
-              ),
+              const SizedBox(height: 16),
             ],
           );
         },
@@ -967,74 +947,149 @@ class _CartPageState extends State<CartPage> {
         ]),
       );
 
+  bool _couponOpen = false;
+
   Widget _extras() {
     final q = _q;
     final bal = (q?['balance'] as num?)?.toInt() ?? 0;
     final minRedeem = (q?['min_redeem'] as num?)?.toInt() ?? 0;
     final loyalty = q?['loyalty'] == true;
     final pv = (q?['point_value'] as num?)?.toDouble() ?? 0.5;
-    final cd = (q?['coupon_discount'] as num?)?.toDouble() ?? 0;
-    final pd = (q?['points_discount'] as num?)?.toDouble() ?? 0;
-    final fee = (q?['fee'] as num?)?.toDouble() ?? 0;
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: cCream2,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: cHair),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(children: [
-            Expanded(
-              child: TextField(
-                controller: _coupon,
-                textCapitalization: TextCapitalization.characters,
-                decoration: const InputDecoration(labelText: 'كود الخصم (لو معاك)'),
-                onSubmitted: (_) => _applyCoupon(),
+    final canUse = bal >= minRedeem && bal > 0;
+    BoxDecoration deco() => BoxDecoration(
+          color: cCream2,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: cHair),
+        );
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: deco(),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          InkWell(
+            onTap: () => setState(() => _couponOpen = !_couponOpen),
+            child: Row(children: [
+              const Icon(Icons.local_offer_outlined, color: cBrand),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                    _appliedCoupon.isNotEmpty ? 'كوبون $_appliedCoupon مفعّل ✓' : 'عندك كود خصم؟',
+                    style: const TextStyle(fontWeight: FontWeight.w800, color: cBrand)),
               ),
-            ),
-            const SizedBox(width: 8),
-            FilledButton(onPressed: _applyCoupon, child: const Text('تطبيق')),
-          ]),
+              Icon(_couponOpen ? Icons.expand_less : Icons.expand_more, color: cMuted),
+            ]),
+          ),
+          if (_couponOpen) ...[
+            const SizedBox(height: 8),
+            Row(children: [
+              Expanded(
+                child: TextField(
+                  controller: _coupon,
+                  textCapitalization: TextCapitalization.characters,
+                  decoration: const InputDecoration(hintText: 'اكتب الكود'),
+                  onSubmitted: (_) => _applyCoupon(),
+                ),
+              ),
+              const SizedBox(width: 8),
+              FilledButton(onPressed: _applyCoupon, child: const Text('تطبيق')),
+            ]),
+          ],
           if (_couponErr != null)
             Padding(
               padding: const EdgeInsets.only(top: 6),
               child: Text(_couponErr!, style: const TextStyle(color: cDanger)),
             ),
-          if (loyalty && sb.auth.currentSession != null) ...[
-            const SizedBox(height: 6),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              value: _usePoints && bal >= minRedeem && bal > 0,
-              onChanged: bal >= minRedeem && bal > 0
+        ]),
+      ),
+      if (loyalty && sb.auth.currentSession != null && bal > 0)
+        Container(
+          margin: const EdgeInsets.only(bottom: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+          decoration: deco(),
+          child: Row(children: [
+            const Icon(Icons.auto_awesome, color: cGold),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                  canUse
+                      ? 'عندك $bal نقطة = ${money(bal * pv)}'
+                      : 'عندك $bal نقطة • الاستبدال من $minRedeem',
+                  style: const TextStyle(fontWeight: FontWeight.w700)),
+            ),
+            Switch(
+              value: _usePoints && canUse,
+              onChanged: canUse
                   ? (v) {
                       _usePoints = v;
                       _refreshQuote();
                     }
                   : null,
-              title: Text('استخدم نقاطك ($bal نقطة)'),
-              subtitle: Text(bal >= minRedeem && bal > 0
-                  ? 'كل نقطة بـ ${money(pv)}'
-                  : 'تقدر تستبدل من $minRedeem نقطة. كل طلب بيجمّعلك نقاط.'),
             ),
-          ],
-          const Divider(height: 22),
-          _row('حساب الطلب', money((q?['subtotal'] as num?)?.toDouble() ?? cart.total)),
-          _row('التوصيل', fee == 0 ? 'مجاني' : money(fee)),
-          if (cd > 0) _row('خصم الكوبون', '-${money(cd)}', color: cGreen),
-          if (pd > 0) _row('خصم النقاط', '-${money(pd)}', color: cGreen),
-          _row('الإجمالي', money(_total), bold: true),
-          if (_belowMin)
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Text(
-                  'أقل قيمة للطلب ${money((q!['min_order'] as num).toDouble())}. زوّد حاجة عشان تكمّل.',
-                  style: const TextStyle(color: cDanger, fontWeight: FontWeight.w700)),
+          ]),
+        ),
+    ]);
+  }
+
+  Widget _bottomBar() {
+    return ListenableBuilder(
+      listenable: cart,
+      builder: (context, _) {
+        if (cart.lines.isEmpty) return const SizedBox.shrink();
+        final q = _q;
+        final cd = (q?['coupon_discount'] as num?)?.toDouble() ?? 0;
+        final pd = (q?['points_discount'] as num?)?.toDouble() ?? 0;
+        final fee = (q?['fee'] as num?)?.toDouble() ?? 0;
+        return SafeArea(
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+            decoration: const BoxDecoration(
+              color: cCream2,
+              border: Border(top: BorderSide(color: cHair)),
             ),
-        ],
-      ),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              if (waiting)
+                Container(
+                  margin: const EdgeInsets.only(bottom: 10),
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: cGold, width: 2),
+                  ),
+                  child: const Row(children: [
+                    Icon(Icons.wifi_off, color: cMuted),
+                    SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'مفيش إنترنت دلوقتي. طلبك محفوظ وهيتبعت لوحده أول ما النت يرجع، متقفلش الصفحة.',
+                        style: TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ]),
+                ),
+              _row('حساب الطلب', money((q?['subtotal'] as num?)?.toDouble() ?? cart.total)),
+              _row('التوصيل', fee == 0 ? 'مجاني' : money(fee), color: fee == 0 ? cGreen : null),
+              if (cd > 0) _row('خصم الكوبون', '-${money(cd)}', color: cGreen),
+              if (pd > 0) _row('خصم النقاط', '-${money(pd)}', color: cGreen),
+              _row('الإجمالي', money(_total), bold: true),
+              if (_belowMin)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                      'أقل قيمة للطلب ${money((q!['min_order'] as num).toDouble())}. زوّد حاجة عشان تكمّل.',
+                      style: const TextStyle(color: cDanger, fontWeight: FontWeight.w700)),
+                ),
+              const SizedBox(height: 8),
+              FilledButton(
+                style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(54)),
+                onPressed: busy || (_store != null && !_store!.open) || _belowMin ? null : _place,
+                child: Text(waiting ? 'استنى النت وابعت' : 'اتحوّل؟ ابعت الطلب',
+                    style: const TextStyle(fontSize: 17)),
+              ),
+            ]),
+          ),
+        );
+      },
     );
   }
 
