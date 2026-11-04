@@ -261,12 +261,12 @@ const sugarDesc = {
   'extra': 'سكر زيادة',
 };
 const statusLabel = {
-  'pending_payment': 'بانتظار تأكيد التحويل',
-  'received': 'تم تأكيد الأوردر',
-  'preparing': 'جاري التحضير',
+  'pending_payment': 'بنراجع التحويل',
+  'received': 'تم تأكيد التحويل',
+  'preparing': 'بنجهّز طلبك',
   'ready': 'جاهز',
   'on_the_way': 'في الطريق ليك',
-  'delivered': 'اتسلّم',
+  'delivered': 'تم الاستلام',
   'cancelled': 'ملغي',
 };
 

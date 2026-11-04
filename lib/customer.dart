@@ -1067,6 +1067,18 @@ class _CartPageState extends State<CartPage> {
                     ),
                   ]),
                 ),
+              if (_store != null && !_store!.open)
+                Container(
+                  width: double.infinity,
+                  margin: const EdgeInsets.only(bottom: 10),
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: cDanger.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Text('${_store!.message}\nزرار التأكيد هيشتغل أول ما نفتح.',
+                      style: const TextStyle(fontWeight: FontWeight.w700)),
+                ),
               _row('حساب الطلب', money((q?['subtotal'] as num?)?.toDouble() ?? cart.total)),
               _row('التوصيل', fee == 0 ? 'مجاني' : money(fee), color: fee == 0 ? cGreen : null),
               if (cd > 0) _row('خصم الكوبون', '-${money(cd)}', color: cGreen),
@@ -1083,7 +1095,10 @@ class _CartPageState extends State<CartPage> {
               FilledButton(
                 style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(54)),
                 onPressed: busy || (_store != null && !_store!.open) || _belowMin ? null : _place,
-                child: Text(waiting ? 'استنى النت وابعت' : 'اتحوّل؟ ابعت الطلب',
+                child: Text(
+                    (_store != null && !_store!.open)
+                        ? 'لسه مقفول'
+                        : (waiting ? 'استنى النت وابعت' : 'أكّد الطلب'),
                     style: const TextStyle(fontSize: 17)),
               ),
             ]),
@@ -1243,7 +1258,7 @@ class _TrackPageState extends State<TrackPage> {
               const SizedBox(height: 4),
               Text(
                 status == 'pending_payment'
-                    ? 'بنتأكد من التحويل، وأول ما نتأكد هنأكد طلبك ونجهزه.'
+                    ? 'بنراجع التحويل دلوقتي. أول ما نتأكد منه هنبعتلك إن طلبك بدأ يتجهّز.'
                     : status == 'on_the_way'
                     ? 'الطلب في الطريق ليك.'
                     : status == 'ready'
@@ -1251,7 +1266,7 @@ class _TrackPageState extends State<TrackPage> {
                     : status == 'cancelled'
                         ? 'الطلب اتلغى. لو فيه مشكلة كلّم بنايه.'
                         : status == 'delivered'
-                            ? 'بالهنا والشفا.'
+                            ? 'تم استلام طلبك. بالهنا والشفا!'
                             : eta != null
                                 ? 'بتوصل بعد حوالي $eta دقيقة.'
                                 : 'جاري تجهيز طلبك.',
@@ -1297,11 +1312,7 @@ class _TrackPageState extends State<TrackPage> {
           ),
         if (status != 'cancelled') ...[
           const SizedBox(height: 20),
-          _step('بانتظار تأكيد التحويل', 0, idx),
-          _step('تم تأكيد الأوردر', 1, idx),
-          _step('جاري التحضير', 2, idx),
-          _step('جاهز', 3, idx),
-          _step('في الطريق ليك', 4, idx),
+          _dots(idx),
         ],
         const SizedBox(height: 16),
         Container(
@@ -1351,6 +1362,70 @@ class _TrackPageState extends State<TrackPage> {
           ),
         ),
       ],
+    );
+  }
+
+  static const _stages = [
+    'بنراجع التحويل',
+    'تم التأكيد',
+    'بنجهّز',
+    'جاهز',
+    'في الطريق',
+    'تم الاستلام',
+  ];
+
+  /// One dot per stage; each lights up as the order moves forward.
+  Widget _dots(int idx) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(6, 16, 6, 12),
+      decoration: BoxDecoration(
+        color: cCream2,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: cHair),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (var i = 0; i < _stages.length; i++)
+            Expanded(
+              child: Column(children: [
+                Row(children: [
+                  Expanded(
+                      child: Container(
+                          height: 3, color: i == 0 ? Colors.transparent : (idx >= i ? cGold : cHair))),
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 400),
+                    width: idx == i ? 26 : 18,
+                    height: idx == i ? 26 : 18,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: idx >= i ? cGold : cCream,
+                      border: Border.all(color: idx >= i ? cGold : cHair, width: 2),
+                      boxShadow: idx == i
+                          ? [BoxShadow(color: cGold.withValues(alpha: 0.7), blurRadius: 14, spreadRadius: 2)]
+                          : null,
+                    ),
+                    child: idx > i || (i == _stages.length - 1 && idx == i)
+                        ? const Icon(Icons.check, size: 13, color: cInk)
+                        : null,
+                  ),
+                  Expanded(
+                      child: Container(
+                          height: 3,
+                          color: i == _stages.length - 1 ? Colors.transparent : (idx > i ? cGold : cHair))),
+                ]),
+                const SizedBox(height: 8),
+                Text(_stages[i],
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                        fontSize: 11.5,
+                        height: 1.3,
+                        fontWeight: idx == i ? FontWeight.w800 : FontWeight.w500,
+                        color: idx >= i ? cInk : cMuted)),
+              ]),
+            ),
+        ],
+      ),
     );
   }
 

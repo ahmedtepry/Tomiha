@@ -7,11 +7,11 @@ import 'package:supabase_flutter/supabase_flutter.dart' show AuthState;
 import 'core.dart';
 
 const _statusMsg = {
-  'received': 'تم تأكيد طلبك، هنبدأ نجهزه دلوقتي.',
+  'received': 'اتأكدنا من التحويل. بنبدأ نجهّز طلبك دلوقتي.',
   'preparing': 'بنحضّر طلبك دلوقتي ☕',
   'ready': 'طلبك جاهز.',
   'on_the_way': 'طلبك في الطريق ليك.',
-  'delivered': 'بالهنا والشفا! طلبك اتسلّم.',
+  'delivered': 'تم استلام طلبك. بالهنا والشفا!',
   'cancelled': 'للأسف طلبك اتلغى. تقدر تطلب من جديد.',
 };
 

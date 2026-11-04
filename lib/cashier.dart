@@ -809,7 +809,7 @@ class _OnlineOrdersPanelState extends State<OnlineOrdersPanel> {
                   child: FilledButton(
                     style: FilledButton.styleFrom(backgroundColor: cInk),
                     onPressed: () => _status(id, 'delivered'),
-                    child: const Text('تم التسليم'),
+                    child: const Text('تم الاستلام • اقفل الأوردر'),
                   ),
                 ),
               const SizedBox(width: 8),
