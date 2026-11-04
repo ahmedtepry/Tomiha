@@ -1434,31 +1434,43 @@ class _TrackPageState extends State<TrackPage> {
           for (var i = 0; i < _stages.length; i++)
             Expanded(
               child: Column(children: [
-                Row(children: [
-                  Expanded(
-                      child: Container(
-                          height: 3, color: i == 0 ? Colors.transparent : (idx >= i ? cGold : cHair))),
-                  AnimatedContainer(
-                    duration: const Duration(milliseconds: 400),
-                    width: idx == i ? 26 : 18,
-                    height: idx == i ? 26 : 18,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: idx >= i ? cGold : cCream,
-                      border: Border.all(color: idx >= i ? cGold : cHair, width: 2),
-                      boxShadow: idx == i
-                          ? [BoxShadow(color: cGold.withValues(alpha: 0.7), blurRadius: 14, spreadRadius: 2)]
-                          : null,
+                SizedBox(
+                  height: 30,
+                  child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+                    Expanded(
+                        child: Container(
+                            height: 3,
+                            color: i == 0 ? Colors.transparent : (idx >= i ? cGold : cHair))),
+                    SizedBox(
+                      width: 30,
+                      height: 30,
+                      child: Center(
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 400),
+                          width: idx == i ? 26 : 18,
+                          height: idx == i ? 26 : 18,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: idx >= i ? cGold : cCream,
+                            border: Border.all(color: idx >= i ? cGold : cHair, width: 2),
+                            boxShadow: idx == i
+                                ? [BoxShadow(color: cGold.withValues(alpha: 0.7), blurRadius: 14, spreadRadius: 2)]
+                                : null,
+                          ),
+                          child: idx > i || (i == _stages.length - 1 && idx == i)
+                              ? const Icon(Icons.check, size: 13, color: cOnBrand)
+                              : null,
+                        ),
+                      ),
                     ),
-                    child: idx > i || (i == _stages.length - 1 && idx == i)
-                        ? const Icon(Icons.check, size: 13, color: cInk)
-                        : null,
-                  ),
-                  Expanded(
-                      child: Container(
-                          height: 3,
-                          color: i == _stages.length - 1 ? Colors.transparent : (idx > i ? cGold : cHair))),
-                ]),
+                    Expanded(
+                        child: Container(
+                            height: 3,
+                            color: i == _stages.length - 1
+                                ? Colors.transparent
+                                : (idx > i ? cGold : cHair))),
+                  ]),
+                ),
                 const SizedBox(height: 8),
                 Text(_stages[i],
                     textAlign: TextAlign.center,
