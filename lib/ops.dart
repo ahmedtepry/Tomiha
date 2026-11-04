@@ -31,20 +31,41 @@ class StoreStatus {
 
   String get hoursText => 'من ${fmtMinutes(openMin)} لحد ${fmtMinutes(closeMin)}';
   String get message {
-    if (forceClosed) return 'الاستقبال واقف دلوقتي. هنرجع قريب.';
+    if (forceClosed) return 'المحل دلوقتي مقفول. هنرجع قريب.';
     // Before opening time today: "not open yet". After closing: "closed for today".
     if (nowMin >= 0 && nowMin < openMin) {
-      return 'لسه مفتحناش. بنفتح الساعة ${fmtMinutes(openMin)}.';
+      return 'المحل دلوقتي مقفول. بنفتح الساعة ${fmtMinutes(openMin)}.';
     }
-    return 'قفلنا لليوم. بنفتح بكرة الساعة ${fmtMinutes(openMin)}، ومواعيدنا $hoursText.';
+    return 'المحل دلوقتي مقفول. بنفتح بكرة الساعة ${fmtMinutes(openMin)}، ومواعيدنا $hoursText.';
   }
 }
 
 /// Asks the server whether the cart is taking orders right now. Null when unreachable.
+StoreStatus? lastStore;
+
+/// True (and tells the customer) when the shop is closed right now.
+Future<bool> storeClosedCheck(BuildContext context) async {
+  final s = await loadStoreStatus() ?? lastStore;
+  if (s == null || s.open) return false;
+  if (!context.mounted) return true;
+  await showDialog<void>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      icon: const Icon(Icons.nightlight_round, color: cGold, size: 36),
+      title: const Text('المحل دلوقتي مقفول'),
+      content: Text(s.message),
+      actions: [
+        FilledButton(onPressed: () => Navigator.pop(ctx), child: const Text('تمام')),
+      ],
+    ),
+  );
+  return true;
+}
+
 Future<StoreStatus?> loadStoreStatus() async {
   try {
     final r = await sb.rpc('store_status') as Map<String, dynamic>;
-    return StoreStatus(
+    return lastStore = StoreStatus(
       r['open'] as bool,
       (r['open_min'] as num).toInt(),
       (r['close_min'] as num).toInt(),

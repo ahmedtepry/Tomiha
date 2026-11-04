@@ -372,12 +372,14 @@ class BonnayaBar extends StatelessWidget {
   }
 }
 
-void openDrinkSheet(BuildContext context, Drink drink, List<Addon> addons) {
+Future<void> openDrinkSheet(BuildContext context, Drink drink, List<Addon> addons) async {
   if (!drink.available) {
     ScaffoldMessenger.of(context)
         .showSnackBar(const SnackBar(content: Text('الصنف ده خلص دلوقتي.')));
     return;
   }
+  if (await storeClosedCheck(context)) return;
+  if (!context.mounted) return;
   showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
@@ -441,12 +443,14 @@ class DrinkTile extends StatelessWidget {
   final List<Addon> addons;
   const DrinkTile({super.key, required this.drink, required this.addons});
 
-  void _open(BuildContext context) {
+  Future<void> _open(BuildContext context) async {
     if (!drink.available) {
       ScaffoldMessenger.of(context)
           .showSnackBar(const SnackBar(content: Text('الصنف ده خلص دلوقتي.')));
       return;
     }
+    if (await storeClosedCheck(context)) return;
+    if (!context.mounted) return;
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
