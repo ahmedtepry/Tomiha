@@ -105,7 +105,7 @@ class _AmanaScreenState extends State<_AmanaScreen>
             gradient: RadialGradient(
               center: Alignment(0, -0.35),
               radius: 1.0,
-              colors: [Color(0xFF3D281B), cCream],
+              colors: [Color(0xFF3A2620), cCream],
             ),
           ),
           child: Center(

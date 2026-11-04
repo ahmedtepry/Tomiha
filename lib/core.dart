@@ -13,18 +13,18 @@ const supabaseUrl = 'https://bfwydbseqkujqvnprtar.supabase.co';
 const supabaseAnonKey =
     'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJmd3lkYnNlcWt1anF2bnBydGFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTM1MTQwOTUsImV4cCI6MjEwOTA5MDA5NX0.1zNyQ8nqvy7iZWfiFcrBIN_lHG7ysNaXvQbJfb20Hz8';
 
-// Dark roast palette ("سهرة قهوة"): cInk is the light text colour,
+// Warm orange-on-espresso palette: cInk is the light text colour,
 // cCream the dark background. Names are kept so every screen follows.
-const cInk = Color(0xFFF5E9D8);
-const cCream = Color(0xFF1A110C);
-const cCream2 = Color(0xFF2A1C14);
-const cHair = Color(0xFF3A281C);
-const cMuted = Color(0xFFB79F88);
-const cBrand = Color(0xFFD9894A);
-const cOnBrand = Color(0xFF1A110C);
-const cCopper = Color(0xFFEBB27A);
-const cGreen = Color(0xFF3E7C57);
-const cGold = Color(0xFFE3B04B);
+const cInk = Color(0xFFFBF1E6);
+const cCream = Color(0xFF17110F);
+const cCream2 = Color(0xFF261A16);
+const cHair = Color(0xFF40302A);
+const cMuted = Color(0xFFB09885);
+const cBrand = Color(0xFFFF8A3D);
+const cOnBrand = Color(0xFF1F0F05);
+const cCopper = Color(0xFFFFB27A);
+const cGreen = Color(0xFF4FB783);
+const cGold = Color(0xFFFFC15E);
 const cDanger = Color(0xFFC8493A);
 const cCoffee = Color(0xFF6A3D22);
 
