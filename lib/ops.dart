@@ -36,7 +36,7 @@ class StoreStatus {
     if (nowMin >= 0 && nowMin < openMin) {
       return 'المحل دلوقتي مقفول. بنفتح الساعة ${fmtMinutes(openMin)}.';
     }
-    return 'المحل دلوقتي مقفول. بنفتح بكرة الساعة ${fmtMinutes(openMin)}، ومواعيدنا $hoursText.';
+    return 'المحل دلوقتي مقفول. بنفتح بكرة الساعة ${fmtMinutes(openMin)}.';
   }
 }
 
@@ -53,7 +53,7 @@ Future<bool> storeClosedCheck(BuildContext context) async {
     builder: (ctx) => AlertDialog(
       icon: const Icon(Icons.nightlight_round, color: cGold, size: 36),
       title: const Text('المحل دلوقتي مقفول'),
-      content: Text(s.message),
+      content: Text('${s.message}\nمواعيدنا: ${s.hoursText}'),
       actions: [
         FilledButton(onPressed: () => Navigator.pop(ctx), child: const Text('تمام')),
       ],

@@ -1080,7 +1080,7 @@ class _CartPageState extends State<CartPage> {
                     color: cDanger.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(14),
                   ),
-                  child: Text('${_store!.message}\nزرار التأكيد هيشتغل أول ما نفتح.',
+                  child: Text('${_store!.message}\nمواعيدنا: ${_store!.hoursText}',
                       style: const TextStyle(fontWeight: FontWeight.w700)),
                 ),
               _row('حساب الطلب', money((q?['subtotal'] as num?)?.toDouble() ?? cart.total)),
